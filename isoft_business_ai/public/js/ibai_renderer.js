@@ -818,14 +818,19 @@ IBAI.attachMentions = function ($input, $anchor) {
 		}, 180);
 	});
 
+	// stopImmediatePropagation, not stopPropagation: both surfaces bind their
+	// own Enter-sends handler on this same textarea, and it is bound after this
+	// one, so stopping the bubble is not enough - without this, choosing a
+	// mention with Enter picked the record AND sent the half-written question.
 	$input.on('keydown', e => {
 		if ($menu.prop('hidden') || !items.length) return;
 		const real = items.filter(it => it.kind !== 'empty');
-		if (!real.length) { if (e.key === 'Escape') { e.stopPropagation(); close(); } return; }
-		if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; draw(); }
-		else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; draw(); }
-		else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(items[active]); }
-		else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+		const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+		if (!real.length) { if (e.key === 'Escape') { stop(); close(); } return; }
+		if (e.key === 'ArrowDown') { stop(); active = (active + 1) % items.length; draw(); }
+		else if (e.key === 'ArrowUp') { stop(); active = (active - 1 + items.length) % items.length; draw(); }
+		else if (e.key === 'Enter' || e.key === 'Tab') { stop(); pick(items[active]); }
+		else if (e.key === 'Escape') { stop(); close(); }
 	});
 	$input.on('blur', () => setTimeout(close, 160));
 	return { close: close, isOpen: () => !$menu.prop('hidden') };
