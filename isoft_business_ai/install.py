@@ -33,8 +33,14 @@ def create_role():
 
 
 def seed_settings():
-    """Leave the assistant switched off until a key and a model are configured."""
+    """Leave the assistant switched off until a key and a model are configured.
+
+    Only on a FIRST seed. after_install runs again on a reinstall, and an
+    unconditional ``enabled = 0`` here silently switches off an assistant that
+    was working - which is a surprising way to lose a live feature.
+    """
     settings = frappe.get_single("Isoft Business AI Settings")
+    first_run = not settings.model
     if not settings.model:
         settings.model = "claude-opus-5"
     if not settings.max_tokens:
@@ -43,7 +49,9 @@ def seed_settings():
         settings.max_iterations = 6
     if not settings.effort:
         settings.effort = "medium"
-    settings.enabled = 0
+    if first_run:
+        settings.enabled = 0
     settings.flags.ignore_permissions = True
     settings.save(ignore_permissions=True)
-    print("Seeded Isoft Business AI Settings (disabled until configured)")
+    print("Seeded Isoft Business AI Settings%s"
+          % (" (disabled until configured)" if first_run else " (left enabled as it was)"))

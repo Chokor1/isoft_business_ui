@@ -1,1 +1,8 @@
-anthropic==0.72.0
+# Both provider SDKs, because either can be selected in Settings and the
+# default is openai. Declaring only one is why a fresh install could reach a
+# ModuleNotFoundError the first time somebody asked a question.
+#
+# Upper bounds are the Python 3.8 ceilings: openai 2.4+ requires jiter>=0.10.0
+# and anthropic moves past 0.72 similarly. Raise them on a bench running 3.10+.
+anthropic>=0.40,<0.73
+openai>=1.40,<2.3

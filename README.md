@@ -27,6 +27,13 @@ git clone https://github.com/Chokor1/isoft_business_ui.git apps/isoft_business_a
 bench --site <your-site> install-app isoft_business_ai
 ```
 
+Both provider SDKs are declared in `requirements.txt`, so `bench get-app`
+installs them. If the bench already had the app and you are only pulling, run
+`./env/bin/pip install -r apps/isoft_business_ai/requirements.txt` as well —
+otherwise the first question raises a missing-SDK error. Nothing about
+installing or migrating the app needs either SDK; only answering a question
+does, and the app says so plainly if one is absent.
+
 Put the provider key in `sites/<your-site>/site_config.json` — never in a form
 field, and never in this repository:
 

@@ -5,6 +5,9 @@ Python 3.8 pins this SDK at 0.72.0, so newer request fields go through
 ``extra_body``.
 """
 
+import frappe
+from frappe import _
+
 from isoft_business_ai.ai.log import safe_log
 from isoft_business_ai.ai.providers.base import (
     LLMResponse, Provider, ToolCall, empty_usage)
@@ -19,7 +22,15 @@ class AnthropicProvider(Provider):
     name = "anthropic"
 
     def _client(self):
-        import anthropic
+        # Lazy, like the OpenAI adapter: install and migrate must not need it.
+        try:
+            import anthropic
+        except ImportError:
+            frappe.throw(
+                _("The Anthropic SDK is not installed on this bench, so the assistant "
+                  "cannot reach the model. Install it with:\n\n"
+                  "    ./env/bin/pip install 'anthropic>=0.40,<0.73'\n\n"
+                  "then run bench restart."))
 
         self._anthropic = anthropic
         return anthropic.Anthropic(api_key=self.api_key)

@@ -7,6 +7,9 @@ arriving as a JSON string, and tool results going back as their own messages.
 
 import json
 
+import frappe
+from frappe import _
+
 from isoft_business_ai.ai.log import safe_log
 from isoft_business_ai.ai.providers.base import (
     LLMResponse, Provider, ToolCall, empty_usage)
@@ -23,7 +26,16 @@ class OpenAIProvider(Provider):
     name = "openai"
 
     def _client(self):
-        from openai import OpenAI
+        # Imported here, not at module scope: installing and migrating the app
+        # must not depend on an SDK that is only needed to answer a question.
+        try:
+            from openai import OpenAI
+        except ImportError:
+            frappe.throw(
+                _("The OpenAI SDK is not installed on this bench, so the assistant "
+                  "cannot reach the model. Install it with:\n\n"
+                  "    ./env/bin/pip install 'openai>=1.40,<2.3'\n\n"
+                  "then run bench restart. Nothing else about this app needs it."))
 
         return OpenAI(api_key=self.api_key)
 
