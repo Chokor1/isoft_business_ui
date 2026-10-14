@@ -858,20 +858,15 @@ IBAI.loadSuggestions = function (then) {
 };
 
 /**
- * The three questions to greet someone with. Spread across groups rather than
- * taken off the top of the list, and general by design: the opening screen is
- * the same for everyone who opens it, so it never names a customer.
+ * No questions on the opening screen. It greets with the company and an empty
+ * box, and the catalogue is still there the moment anyone starts typing.
+ *
+ * Kept as a function returning nothing rather than deleted: both surfaces call
+ * it, and a desk Page script is cached in localStorage with no version check,
+ * so a browser can still be running last week's copy of the caller.
  */
-IBAI.openingSuggestions = function (all) {
-	const want = ['vendas', 'tesouraria', 'contabilidade', 'stock', 'compras', 'targets'];
-	const byGroup = {};
-	(all || []).forEach(s => {
-		if (!byGroup[s.group]) byGroup[s.group] = s.text;
-	});
-	const out = [];
-	want.forEach(g => { if (out.length < 3 && byGroup[g]) out.push(byGroup[g]); });
-	(all || []).forEach(s => { if (out.length < 3 && out.indexOf(s.text) === -1) out.push(s.text); });
-	return out;
+IBAI.openingSuggestions = function () {
+	return [];
 };
 
 IBAI.normalise = function (text) {

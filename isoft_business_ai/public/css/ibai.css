@@ -439,7 +439,9 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 .ibai-welcome-title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .ibai-welcome-sub { font-size: 13px; color: var(--ibai-text-2); margin-top: var(--ibai-1); }
 .ibai-brief { display: grid; gap: var(--ibai-2); margin-top: var(--ibai-4); }
-.ibai-starters { display: grid; gap: var(--ibai-2); margin-top: var(--ibai-4); }
+/* Empty on the opening screen now, so it must take no room. */
+.ibai-starters { display: grid; gap: var(--ibai-2); }
+.ibai-starters:not(:empty) { margin-top: var(--ibai-4); }
 .ibai-starter {
   display: block; width: 100%; text-align: left;
   background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
