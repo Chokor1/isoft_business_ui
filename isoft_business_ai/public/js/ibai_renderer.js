@@ -1275,13 +1275,21 @@ IBAI.mountHelp = function (root) {
 	const inConsole = $root.hasClass('ibai-console');
 	let $panel = null;
 	let watcher = null;
+	let gone = null;
 
 	// Appended to the body, not inside the surface: the quick panel clips its
 	// children, so a panel hung off its left edge was built, measured as
 	// visible, and painted nowhere. Positioned against the surface's own box
 	// instead, which also survives the panel being dragged wider.
+	// The help lives on the body, not inside the surface, so nothing takes it
+	// away when the surface goes: closing the agent left its own instructions
+	// hanging over the desk.
+	const stillThere = () => document.body.contains($root[0])
+		&& ($root.hasClass('ibai-console') || $root.hasClass('is-open'));
+
 	const place = () => {
 		if (!$panel) return;
+		if (!stillThere()) { close(); return; }
 		const r = $root[0].getBoundingClientRect();
 		const gap = 12;
 		const width = Math.min(inConsole ? 360 : 320,
@@ -1299,6 +1307,7 @@ IBAI.mountHelp = function (root) {
 
 	const close = () => {
 		if (watcher) { try { watcher.disconnect(); } catch (e) { /* ignore */ } watcher = null; }
+		if (gone) { try { gone.disconnect(); } catch (e) { /* ignore */ } gone = null; }
 		$(window).off('resize.ibaihelp scroll.ibaihelp');
 		if ($panel) { $panel.remove(); $panel = null; }
 		$btn.attr('aria-expanded', 'false');
@@ -1313,6 +1322,13 @@ IBAI.mountHelp = function (root) {
 			watcher = new ResizeObserver(place);
 			watcher.observe($root[0]);
 		} catch (e) { /* no observer: resize still repositions it */ }
+		try {
+			// The quick panel closes by dropping a class rather than by being
+			// removed, which resizing alone never notices.
+			gone = new MutationObserver(place);
+			gone.observe($root[0], {attributes: true, attributeFilter: ['class']});
+			gone.observe(document.body, {childList: true});
+		} catch (e) { /* ignore */ }
 		$btn.attr('aria-expanded', 'true');
 	};
 	const $btn = $('<button class="ibai-ico ibai-act-help"></button>')
