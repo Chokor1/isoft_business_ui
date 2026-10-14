@@ -626,17 +626,50 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 }
 .ibai-table tr.ibai-r-total td.ibai-num { font-size: 12px; }
 
-/* The label column stays on screen while the figures scroll under it. */
-.ibai-result.is-sheet .ibai-table td:first-child,
-.ibai-result.is-sheet .ibai-table th:first-child {
-  position: sticky; left: 0; z-index: 1;
+/* Frozen label columns. The leading run of non-numeric columns stays on
+   screen while the figures scroll under it - a balancete leads with a code AND
+   a description, and pinning only the code leaves the name scrolling away in
+   clipped fragments that read as corruption.
+
+   Their background must be FULLY OPAQUE in every row state or the scrolling
+   columns show through. Two of the row-shading tokens are deliberately
+   translucent (banding at 2%, the total row a 10% accent wash), so each is
+   composited over an opaque base with a flat gradient layer rather than used
+   on its own. Setting the translucent token directly is what let the figures
+   slide visibly under the labels. */
+.ibai-result.is-sheet .ibai-table .ibai-pin {
+  position: sticky; z-index: 2;
   background: var(--ibai-surface-2);
-  border-right: 1px solid var(--ibai-line);
 }
-.ibai-result.is-sheet .ibai-table th:first-child { z-index: 3; background: var(--ibai-surface-3); }
-.ibai-result.is-sheet .ibai-table tbody tr:nth-child(even) td:first-child { background: var(--ibai-band); }
-.ibai-result.is-sheet .ibai-table tr.ibai-r-subtotal td:first-child { background: var(--ibai-surface-3) !important; }
-.ibai-result.is-sheet .ibai-table tr.ibai-r-total td:first-child { background: var(--ibai-accent-soft) !important; }
+.ibai-result.is-sheet .ibai-table th.ibai-pin {
+  z-index: 4; background: var(--ibai-surface-3);
+}
+.ibai-result.is-sheet .ibai-table .ibai-pin-0 { left: 0; }
+/* --ibai-pin-1 is the measured width of the first pinned column, set by the
+   renderer once the browser has laid the table out. */
+.ibai-result.is-sheet .ibai-table .ibai-pin-1 { left: var(--ibai-pin-1, 0px); }
+
+/* Only the last pinned column carries the edge, so the pair reads as one
+   frozen block rather than two. */
+.ibai-result.is-sheet.pin-1 .ibai-table .ibai-pin-0,
+.ibai-result.is-sheet.pin-2 .ibai-table .ibai-pin-1 {
+  box-shadow: 1px 0 0 var(--ibai-line), 6px 0 8px -6px rgba(0, 0, 0, .18);
+}
+
+.ibai-result.is-sheet .ibai-table tbody tr:nth-child(even) .ibai-pin {
+  background: linear-gradient(var(--ibai-band), var(--ibai-band)), var(--ibai-surface-2);
+}
+/* Hover has to reach the pinned cells too, or the row highlight stops at them. */
+.ibai-result.is-sheet .ibai-table tbody tr:hover .ibai-pin {
+  background: var(--ibai-surface-3);
+}
+.ibai-result.is-sheet .ibai-table tr.ibai-r-subtotal .ibai-pin {
+  background: var(--ibai-surface-3) !important;
+}
+.ibai-result.is-sheet .ibai-table tr.ibai-r-total .ibai-pin {
+  background: linear-gradient(var(--ibai-accent-soft), var(--ibai-accent-soft)),
+              var(--ibai-surface-2) !important;
+}
 .ibai-result.is-sheet .ibai-table-wrap { max-height: 560px; }
 
 .ibai-source { font-size: 11px; color: var(--ibai-text-3); margin-top: var(--ibai-2); line-height: 1.5; }
@@ -734,6 +767,17 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
   max-height: 240px; overflow-y: auto; z-index: 6;
 }
 .ibai-mentions[hidden] { display: none; }
+
+/* Two stages in one menu: pick a type, then pick a record inside it. */
+.ibai-mention-head {
+  font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ibai-text-3); font-weight: 600;
+  padding: 7px 10px 3px; position: sticky; top: 0;
+  background: var(--ibai-surface-3);
+}
+.ibai-mention-row.is-doctype .ibai-mention-nm { font-weight: 600; }
+.ibai-mention-go { margin-left: auto; color: var(--ibai-text-3); font-size: 12px; }
+.ibai-mention-row.is-doctype.active .ibai-mention-go { color: var(--ibai-accent); }
 
 /* Suggestions while typing. Same anchor as the @ menu, and only one of the
    two is ever open. */

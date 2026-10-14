@@ -58,9 +58,31 @@ class OpenAIProvider(Provider):
         # Stable block first, then the volatile one: OpenAI caches on the token
         # prefix, so anything that changes per user must come after what does not.
         messages = [{"role": "system", "content": b["text"]} for b in system_blocks]
-        messages.extend(history or [])
+        messages.extend(self._usable_history(history))
         messages.append({"role": "user", "content": question})
         return messages
+
+    @staticmethod
+    def _usable_history(history):
+        """Drop tool results whose tool call is not in this window.
+
+        OpenAI rejects the whole request if a role="tool" message has no
+        preceding assistant message carrying that tool_call_id, which turns one
+        stale transcript into a conversation that can never be continued. The
+        trimmer upstream avoids creating them; this makes it impossible for one
+        to reach the API from any other route.
+        """
+        seen = set()
+        usable = []
+        for m in history or []:
+            if m.get("role") == "assistant":
+                for call in (m.get("tool_calls") or []):
+                    if call.get("id"):
+                        seen.add(call["id"])
+            elif m.get("role") == "tool" and m.get("tool_call_id") not in seen:
+                continue
+            usable.append(m)
+        return usable
 
     def strip_system(self, messages):
         return [m for m in messages if m.get("role") != "system"]

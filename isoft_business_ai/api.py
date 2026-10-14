@@ -37,26 +37,35 @@ def _check_access():
         )
 
 
-def _trim(messages):
-    """Trim history, never starting the replay on a tool_result message.
+def _is_tool_result(message):
+    """A tool result, in either provider's shape.
 
-    A ``tool_result`` whose matching ``tool_use`` was trimmed away is rejected
-    by the API, so the window is moved forward until it starts cleanly.
+    Anthropic returns them as tool_result blocks inside a user message; OpenAI
+    gives them their own message with role "tool". Recognising only the first
+    shape is what let a trimmed OpenAI history start on an orphan and come back
+    as "messages with role 'tool' must be a response to a preceeding message
+    with 'tool_calls'".
+    """
+    if message.get("role") == "tool":
+        return True
+    content = message.get("content")
+    return (message.get("role") == "user"
+            and isinstance(content, list)
+            and any(isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in content))
+
+
+def _trim(messages):
+    """Trim history, never starting the replay on a tool result.
+
+    A tool result whose matching tool call was trimmed away is rejected by both
+    APIs, so the window moves forward until it starts cleanly.
     """
     if len(messages) <= HISTORY_LIMIT:
         return messages
 
     window = messages[-HISTORY_LIMIT:]
-    while window:
-        first = window[0]
-        content = first.get("content")
-        starts_on_tool_result = (
-            first.get("role") == "user"
-            and isinstance(content, list)
-            and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
-        )
-        if not starts_on_tool_result:
-            break
+    while window and _is_tool_result(window[0]):
         window = window[1:]
     return window
 
@@ -226,6 +235,15 @@ def search_documents(query=None, doctype=None, limit=10):
     from isoft_business_ai.ai import documents
 
     return documents.search(query, doctype=doctype or None, limit=int(limit))
+
+
+@frappe.whitelist()
+def search_doctypes(query=None, limit=8):
+    """Document types matching what has been typed, named in the user's language."""
+    _check_access()
+    from isoft_business_ai.ai import documents
+
+    return documents.search_doctypes(query or "", limit=int(limit))
 
 
 @frappe.whitelist()

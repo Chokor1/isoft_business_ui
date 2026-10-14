@@ -325,8 +325,21 @@ def resolve_mentions(question):
         try:
             summaries.append(documents.summarise(*key))
         except Exception as e:
-            summaries.append({"doctype": key[0], "name": key[1],
-                              "error": str(e)[:200]})
+            entry = {"doctype": key[0], "name": key[1], "error": str(e)[:200]}
+            # A record mentioned under the wrong type is the common case, and
+            # "not found" alone sends the whole question into a dead end.
+            try:
+                elsewhere = documents.find_elsewhere(key[1], exclude=key[0])
+            except Exception:
+                elsewhere = []
+            if elsewhere:
+                entry["found_instead_as"] = [e["doctype"] for e in elsewhere]
+                entry["error"] += (" A record with this exact name exists as: %s. "
+                                   "Tell the user it is a %s, not a %s, and answer "
+                                   "for the right one."
+                                   % (", ".join(e["doctype"] for e in elsewhere),
+                                      elsewhere[0]["doctype"], key[0]))
+            summaries.append(entry)
     readable = MENTION_RE.sub(lambda m: "%s %s" % (m.group(1), m.group(2)),
                               question or "")
     return readable, summaries

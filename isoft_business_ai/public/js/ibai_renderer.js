@@ -271,9 +271,19 @@ IBAI.render_result = function (res, opts) {
 	const rows = res.rows || [];
 	const $wrap = $('<div class="ibai-result"></div>');
 	if (opts.wide && columns.length > 5) $wrap.addClass('is-wide');
-	// Enough columns to read as a sheet rather than a list: pin the label
-	// column so the figures scroll under it.
-	if (columns.length >= 5) $wrap.addClass('is-sheet');
+	// Enough columns to read as a sheet rather than a list: pin the labels so
+	// the figures scroll under them. The labels are the leading run of
+	// non-numeric columns, capped at two - a balancete leads with a code AND a
+	// description, and pinning only the code leaves the name scrolling away in
+	// clipped fragments, which reads as corruption rather than as scrolling.
+	let pinned = 0;
+	if (columns.length >= 5) {
+		$wrap.addClass('is-sheet');
+		while (pinned < columns.length && pinned < 2 && !IBAI.is_numeric(columns[pinned])) {
+			pinned++;
+		}
+		if (pinned) $wrap.addClass('pin-' + pinned);
+	}
 
 	if (res.header && Object.keys(res.header).length) {
 		const $dl = $('<dl class="ibai-doc-header"></dl>');
@@ -285,8 +295,9 @@ IBAI.render_result = function (res, opts) {
 	}
 
 	if (rows.length) {
-		const head = columns.map(c =>
-			'<th class="' + (IBAI.is_numeric(c) ? 'ibai-num' : '') + '">' +
+		const head = columns.map((c, i) =>
+			'<th class="' + (IBAI.is_numeric(c) ? 'ibai-num' : '') +
+			(i < pinned ? ' ibai-pin ibai-pin-' + i : '') + '">' +
 			esc(__(c.label)) + '</th>').join('');
 		// Text cells carry their own value as a title: a wide table clips them
 		// so the numeric columns stay on screen, and the full text has to stay
@@ -296,13 +307,14 @@ IBAI.render_result = function (res, opts) {
 			// a column, so it never reaches format_cell.
 			const mark = row._style === 'total' ? ' class="ibai-r-total"'
 				: row._style === 'subtotal' ? ' class="ibai-r-subtotal"' : '';
-			return '<tr' + mark + '>' + columns.map(c => {
+			return '<tr' + mark + '>' + columns.map((c, i) => {
 				const num = IBAI.is_numeric(c);
 				const raw = row[c.key];
 				const neg = num && typeof raw === 'number' && raw < 0;
 				const title = (!num && raw != null && String(raw).trim())
 					? ' title="' + esc(String(raw).trim()) + '"' : '';
-				const cls = (num ? 'ibai-num' : '') + (neg ? ' ibai-neg' : '');
+				const cls = (num ? 'ibai-num' : '') + (neg ? ' ibai-neg' : '') +
+					(i < pinned ? ' ibai-pin ibai-pin-' + i : '');
 				return '<td class="' + cls + '"' + title + '>' +
 					IBAI.format_cell(raw, c) + '</td>';
 			}).join('') + '</tr>';
@@ -311,6 +323,24 @@ IBAI.render_result = function (res, opts) {
 			'<div class="ibai-table-wrap"><table class="ibai-table">' +
 			'<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>'
 		);
+		// The second pinned column has to sit exactly at the first one's right
+		// edge, which is only knowable once the browser has laid the table out.
+		// A ResizeObserver covers both the first layout and any later reflow.
+		if (pinned > 1) {
+			const table = $wrap.find('.ibai-table')[0];
+			const place = () => {
+				const first = table.querySelector('thead th.ibai-pin-0');
+				if (!first || !first.offsetWidth) return;
+				table.style.setProperty('--ibai-pin-1', first.offsetWidth + 'px');
+			};
+			place();
+			if (window.ResizeObserver) {
+				const ro = new ResizeObserver(place);
+				ro.observe(table);
+			} else {
+				$(window).on('resize.ibaipin', place);
+			}
+		}
 	}
 
 	const $foot = $('<div class="ibai-source"></div>');
@@ -495,7 +525,27 @@ IBAI.attachMentions = function ($input, $anchor) {
 		items = [];
 		token = null;
 	}
-	function insert(item) {
+
+	/** Replace the token being typed, and say whether the menu should stay up. */
+	function replaceToken(text, keepOpen) {
+		const value = $input.val() || '';
+		const el = $input[0];
+		const caret = token.start + 1 + text.length;
+		$input.val(value.slice(0, token.start) + '@' + text +
+			(keepOpen ? '' : ' ') + value.slice(token.end));
+		if (!keepOpen) { close(); }
+		$input.focus();
+		try { el.setSelectionRange(caret, caret); } catch (e) { /* ignore */ }
+		$input.trigger('input');
+	}
+
+	function pick(item) {
+		if (item.kind === 'doctype') {
+			// Stage one: the user chose a type. Leave the menu open and start
+			// searching inside it, which is the whole point of picking a type.
+			replaceToken(item.doctype + ':', true);
+			return;
+		}
 		const value = $input.val() || '';
 		$input.val(
 			value.slice(0, token.start) + IBAI.mentionToken(item.doctype, item.name) + ' ' +
@@ -504,28 +554,57 @@ IBAI.attachMentions = function ($input, $anchor) {
 		close();
 		$input.trigger('input').focus();
 	}
+
 	function draw() {
 		$menu.empty();
 		if (!items.length) { $menu.prop('hidden', true); return; }
+		let lastKind = null;
 		items.forEach((it, i) => {
-			const $row = $('<div class="ibai-mention-row"></div>').toggleClass('active', i === active);
-			$('<span class="ibai-mention-dt"></span>').text(it.doctype).appendTo($row);
-			$('<span class="ibai-mention-nm"></span>').text(it.name).appendTo($row);
-			if (it.label) $('<span class="ibai-mention-lb"></span>').text(it.label).appendTo($row);
-			if (it.here) $('<span class="ibai-mention-here"></span>').text(__('open now')).appendTo($row);
-			$row.on('mousedown', e => { e.preventDefault(); insert(it); });
+			if (it.kind !== lastKind) {
+				lastKind = it.kind;
+				$('<div class="ibai-mention-head"></div>')
+					.text(it.kind === 'doctype' ? __('Type of document') : __('Documents'))
+					.appendTo($menu);
+			}
+			const $row = $('<div class="ibai-mention-row"></div>')
+				.toggleClass('active', i === active)
+				.toggleClass('is-doctype', it.kind === 'doctype');
+			if (it.kind === 'doctype') {
+				$('<span class="ibai-mention-nm"></span>').text(it.label).appendTo($row);
+				if (it.label !== it.doctype) {
+					$('<span class="ibai-mention-lb"></span>').text(it.doctype).appendTo($row);
+				}
+				$('<span class="ibai-mention-go"></span>').text('\u2192').appendTo($row);
+			} else {
+				$('<span class="ibai-mention-dt"></span>').text(it.dtLabel || it.doctype).appendTo($row);
+				$('<span class="ibai-mention-nm"></span>').text(it.name).appendTo($row);
+				if (it.label) $('<span class="ibai-mention-lb"></span>').text(it.label).appendTo($row);
+				if (it.here) {
+					$('<span class="ibai-mention-here"></span>').text(__('open now')).appendTo($row);
+				}
+			}
+			$row.on('mousedown', e => { e.preventDefault(); pick(it); });
 			$menu.append($row);
 		});
 		$menu.prop('hidden', false);
 	}
+
+	/** What is being typed after the last @, split into type and search. */
 	function tokenAtCaret() {
 		const el = $input[0];
 		const upto = (el.value || '').slice(0, el.selectionStart);
 		const at = upto.lastIndexOf('@');
 		if (at === -1) return null;
 		const term = upto.slice(at + 1);
-		if (/[\]\n]/.test(term) || term.length > 60) return null;
-		return { start: at, end: el.selectionStart, term: term };
+		if (/[\]\n]/.test(term) || term.length > 80) return null;
+		const colon = term.indexOf(':');
+		return {
+			start: at, end: el.selectionStart, term: term,
+			// "Customer:ferp" and "cliente:ferp" both mean the same thing; the
+			// server resolves the label back to the real doctype.
+			doctype: colon === -1 ? null : term.slice(0, colon).trim(),
+			query: colon === -1 ? term : term.slice(colon + 1),
+		};
 	}
 
 	$input.on('input click keyup', e => {
@@ -533,43 +612,65 @@ IBAI.attachMentions = function ($input, $anchor) {
 		token = tokenAtCaret();
 		if (!token) return close();
 
+		const scoped = !!token.doctype;
 		const here = IBAI.currentDocument();
 		const seed = [];
-		if (here && (!token.term ||
+		if (!scoped && here && (!token.term ||
 				here.name.toLowerCase().indexOf(token.term.toLowerCase()) !== -1)) {
-			seed.push({ doctype: here.doctype, name: here.name, label: '', here: true });
+			seed.push({ kind: 'doc', doctype: here.doctype, name: here.name,
+				label: '', here: true });
 		}
 		items = seed.slice();
 		active = 0;
 		draw();
 
 		clearTimeout(timer);
-		const term = token.term;
+		const snapshot = token;
 		timer = setTimeout(() => {
-			if (!token) return;
+			if (!token || token.term !== snapshot.term) return;
+			const calls = [$.Deferred(), $.Deferred()];
+
+			// Types only matter while the user has not committed to one.
+			if (scoped) {
+				calls[0].resolve([]);
+			} else {
+				frappe.call({
+					method: 'isoft_business_ai.api.search_doctypes',
+					args: { query: snapshot.term, limit: 5 },
+					callback: r => calls[0].resolve(r.message || []),
+					error: () => calls[0].resolve([]),
+				});
+			}
 			frappe.call({
 				method: 'isoft_business_ai.api.search_documents',
-				args: { query: term, limit: 8 },
-				callback: r => {
-					if (!token) return;
-					const extra = (r.message || []).filter(x =>
-						!seed.some(s => s.doctype === x.doctype && s.name === x.name));
-					items = seed.concat(extra).slice(0, 9);
-					active = 0;
-					draw();
-				},
+				args: { query: snapshot.query, doctype: snapshot.doctype || undefined,
+					limit: scoped ? 10 : 6 },
+				callback: r => calls[1].resolve(r.message || []),
+				error: () => calls[1].resolve([]),
 			});
-		}, 220);
+
+			$.when.apply($, calls).done((types, docs) => {
+				if (!token || token.term !== snapshot.term) return;
+				const typeRows = (types || []).map(t => ({
+					kind: 'doctype', doctype: t.doctype, label: t.label }));
+				const docRows = (docs || [])
+					.filter(x => !seed.some(s => s.doctype === x.doctype && s.name === x.name))
+					.map(x => Object.assign({ kind: 'doc' }, x));
+				items = seed.concat(typeRows, docRows).slice(0, 12);
+				active = 0;
+				draw();
+			});
+		}, 200);
 	});
 
 	$input.on('keydown', e => {
 		if ($menu.prop('hidden') || !items.length) return;
 		if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; draw(); }
 		else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; draw(); }
-		else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insert(items[active]); }
+		else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(items[active]); }
 		else if (e.key === 'Escape') { e.stopPropagation(); close(); }
 	});
-	$input.on('blur', () => setTimeout(close, 120));
+	$input.on('blur', () => setTimeout(close, 160));
 	return { close: close, isOpen: () => !$menu.prop('hidden') };
 };
 

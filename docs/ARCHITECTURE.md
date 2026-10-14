@@ -175,6 +175,44 @@ The six definitions that change an answer if guessed are substituted into the
 **cached** system block, so they cost one cache write and nothing afterwards.
 The rest are behind the `glossario` tool.
 
+## Mentions: pick a type, then a record
+
+Typing `@` opens a two-stage menu. With a bare term it offers **document types**
+matching what was typed, in the user's own language — Frappe already translates
+every doctype, so `@cli` finds Cliente and `@armazem` finds Armazém without this
+app shipping a glossary of its own — alongside records matching across the
+common types. Choosing a type rewrites the token to `@Customer:` and keeps the
+menu open, now searching inside it.
+
+The label is translated; the token always carries the **real** doctype, because
+that is what every tool takes as a parameter. A hand-typed `@cliente:ferp` still
+works: `documents.resolve_doctype` maps the translated name back.
+
+All 280 business doctypes on the site are reachable, filtered by read
+permission, with the twenty people actually mention ranked first.
+
+**A mention of the wrong type is corrected, not refused.** `@[Customer:UNICOM,
+LDA]` for a record that is really a Supplier used to come back as a flat "not
+found" and the question died there. `documents.find_elsewhere` now names the
+right type, and the answer opens with "UNICOM, LDA is registered as a supplier,
+not a customer" and then answers the question.
+
+## Trimmed history must not start on a tool result
+
+Both APIs reject a tool result whose matching tool call is no longer in the
+window. The trimmer knew only Anthropic's shape — `tool_result` blocks inside a
+user message — and let OpenAI's `role: "tool"` messages through, so every
+conversation past roughly eight turns became **permanently** unusable with
+*"messages with role 'tool' must be a response to a preceeding message with
+'tool_calls'"*.
+
+`_is_tool_result` now recognises both shapes, and the OpenAI adapter drops any
+tool result whose `tool_call_id` is not in the window it is about to send, so a
+transcript that is already malformed cannot reach the API either.
+`tests/test_history_trim.py` builds transcripts of every length from 1 to 39
+turns in both shapes and asserts no window starts on an orphan; against the old
+code it failed at **32 of 39** lengths.
+
 ## A list is not a ranking
 
 Every tool that returns a ranked page offers the opposite order, because the

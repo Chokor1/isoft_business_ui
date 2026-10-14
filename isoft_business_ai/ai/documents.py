@@ -11,6 +11,7 @@ costs a few hundred tokens instead of several thousand.
 """
 
 import frappe
+from frappe import _
 
 from isoft_business_ai.ai.security import BLOCKED_DOCTYPES, BLOCKED_FIELDS
 
@@ -136,6 +137,10 @@ def search(query, doctype=None, limit=10):
     query = (query or "").strip()
     results = []
 
+    if doctype:
+        # The caller may have typed "cliente" or "Armazém"; resolve it to the
+        # real doctype before filtering on it.
+        doctype = resolve_doctype(doctype) or doctype
     doctypes = [doctype] if doctype else _likely_doctypes(query)
     for dt in doctypes:
         if len(results) >= limit * 2:
@@ -187,3 +192,102 @@ def _likely_doctypes(query):
             "Quotation", "Sales Order", "Sales Invoice", "Delivery Note",
             "Purchase Order", "Purchase Invoice", "Purchase Receipt",
             "Material Request", "Stock Entry", "Payment Entry", "Journal Entry"]
+
+
+# ----------------------------------------------------- doctype lookup for @
+
+# A short list that should lead the suggestions, because they are what people
+# actually mention. Everything else the site has still appears, ranked after.
+COMMON_DOCTYPES = [
+    "Customer", "Supplier", "Item", "Quotation", "Sales Order", "Sales Invoice",
+    "Delivery Note", "Purchase Order", "Purchase Invoice", "Purchase Receipt",
+    "Payment Entry", "Journal Entry", "Stock Entry", "Material Request",
+    "Warehouse", "Account", "Employee", "Project", "Lead", "Opportunity",
+]
+
+
+def _normalise(text):
+    """Lowercase and strip accents, so 'armazem' finds 'Armazém'."""
+    text = (text or "").lower().strip()
+    try:
+        import unicodedata
+        return "".join(c for c in unicodedata.normalize("NFD", text)
+                       if unicodedata.category(c) != "Mn")
+    except Exception:
+        return text
+
+
+def _business_doctypes():
+    """Every doctype a user could sensibly mention, cached per site."""
+    def build():
+        rows = frappe.get_all("DocType", fields=["name"],
+                              filters={"istable": 0, "issingle": 0},
+                              limit_page_length=0)
+        return [r["name"] for r in rows if is_business_doctype(r["name"])]
+
+    return frappe.cache().get_value("ibai_business_doctypes", build) or []
+
+
+def search_doctypes(term, limit=8):
+    """Doctypes matching what has been typed, in the user's own language.
+
+    Frappe already translates every doctype name, so "cliente" finds Customer
+    and "armazem" finds Warehouse without this app shipping a glossary of its
+    own. The label returned is translated; the doctype is not, because that is
+    what every other tool takes as a parameter.
+    """
+    needle = _normalise(term)
+    hits = []
+    for name in _business_doctypes():
+        if not frappe.has_permission(name, "read"):
+            continue
+        label = _(name)
+        english, translated = _normalise(name), _normalise(label)
+        if not needle:
+            rank = 0 if name in COMMON_DOCTYPES else 2
+        elif english.startswith(needle) or translated.startswith(needle):
+            rank = 0
+        elif needle in english or needle in translated:
+            rank = 1
+        else:
+            continue
+        if name not in COMMON_DOCTYPES:
+            rank += 1
+        hits.append({"doctype": name, "label": label, "rank": rank})
+
+    hits.sort(key=lambda h: (h["rank"], h["label"]))
+    return [{"doctype": h["doctype"], "label": h["label"]} for h in hits[:limit]]
+
+
+def resolve_doctype(text):
+    """Turn whatever was typed before the colon into a real doctype name."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    for name in _business_doctypes():
+        if _normalise(name) == _normalise(text) or _normalise(_(name)) == _normalise(text):
+            return name
+    found = search_doctypes(text, limit=1)
+    return found[0]["doctype"] if found else None
+
+
+def find_elsewhere(name, exclude=None, limit=4):
+    """Which other doctypes hold a record with this exact name.
+
+    A mention of the wrong type - "@[Customer:UNICOM, LDA]" for a record that is
+    actually a Supplier - would otherwise come back as a flat "not found" and
+    the question would die there. Naming the right type turns it into a
+    correction the assistant can act on.
+    """
+    out = []
+    for doctype in _business_doctypes():
+        if doctype == exclude or not frappe.has_permission(doctype, "read"):
+            continue
+        try:
+            if frappe.db.exists(doctype, name):
+                out.append({"doctype": doctype, "label": _(doctype)})
+        except Exception:
+            continue
+        if len(out) >= limit:
+            break
+    return out
