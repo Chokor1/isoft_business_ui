@@ -651,10 +651,22 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 }
 .ibai-media-img:hover { border-color: var(--ibai-accent-line); }
 .ibai-media-img img {
-  display: block; max-width: 148px; max-height: 148px;
+  /* Big enough to actually look at: the picture is the answer to "show me
+     this item", not a footnote to it. */
+  display: block; max-width: 100%; max-height: 300px;
   width: auto; height: auto; border-radius: calc(var(--ibai-r-sm) - 2px);
   object-fit: contain;
 }
+.ibai-media-fig { margin: 0; max-width: min(340px, 100%); }
+.ibai-media-fig figcaption {
+  margin-top: 4px; font-size: 11px; color: var(--ibai-text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ibai-media-fig figcaption a { color: var(--ibai-text-3); text-decoration: none; }
+.ibai-media-fig figcaption a:hover {
+  color: var(--ibai-accent); text-decoration: underline;
+}
+.ibai-media-fig.is-missing { max-width: none; }
 .ibai-media-file {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);

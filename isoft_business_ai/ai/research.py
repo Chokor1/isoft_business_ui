@@ -49,15 +49,27 @@ MAX_SOURCES = 6
 # Pages fetched only to find a picture. Small, because that is all this is for.
 FETCH_TIMEOUT = 6
 FETCH_MAX_BYTES = 512 * 1024
-FETCH_MAX_PAGES = 2
+FETCH_MAX_PAGES = 4
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif", "image/avif")
+# Below this on either side it is a logo, an icon or a spacer, not a picture of
+# anything. Naming cannot tell them apart - the one that got through was a 49x37
+# site banner sitting on a support page - so the file itself is measured.
+MIN_IMAGE_PX = 200
+# Help centres, forums and downloads pages carry screenshots of other things.
+# A picture scraped from one was a photo of the underside of a different
+# device, presented as the product that had been asked about.
+NOT_A_PRODUCT_PAGE = re.compile(
+    r'(^support\.|^help\.|^forums?\.|^community\.|/hc/|/support/|/help/|'
+    r'/forum|/community|/download|/driver|/manual|/wiki/talk)', re.I)
 
 KINDS = {
     "produto": (
         "You are identifying a product for a distributor in Angola. Say what the "
         "product is, what it is used for, who makes it, and the specifications that "
         "would matter when buying or reselling it. If the code looks like a "
-        "manufacturer part number, say whose."
+        "manufacturer part number, say whose. Cite the specific product page wherever "
+        "one exists - a manufacturer's or distributor's page for this exact product - "
+        "rather than a company home page, because the picture of the product is on it."
     ),
     "empresa": (
         "You are checking out a company for a business in Angola that may trade with "
@@ -224,6 +236,50 @@ OG_IMAGE = re.compile(
 OG_IMAGE_REVERSED = re.compile(
     r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)='
     r'["\'](?:og:image(?::secure_url)?|twitter:image)["\']', re.I)
+# Shops describe their products in JSON-LD far more consistently than they fill
+# in og:image, and that is where the picture of the product itself lives.
+LD_IMAGE = re.compile(r'"image"\s*:\s*(?:\[\s*)?["\']([^"\']+)["\']', re.I)
+LINK_IMAGE = re.compile(
+    r'<link[^>]+rel=["\']image_src["\'][^>]+href=["\']([^"\']+)["\']', re.I)
+# Last resort: the biggest <img> the page declares a size for.
+IMG_TAG = re.compile(r'<img[^>]+>', re.I)
+IMG_SRC = re.compile(r'\ssrc=["\']([^"\']+)["\']', re.I)
+IMG_W = re.compile(r'\swidth=["\']?(\d{2,4})', re.I)
+# Sprites, spacers, badges and logos - never the product. "transparent" is in
+# here because a CDN serves a transparent placeholder when the asset it was
+# asked for is missing, and that arrives as a perfectly valid PNG of nothing:
+# it passed every check and rendered as an empty box in the chat.
+JUNK_IMAGE = re.compile(
+    r'(sprite|placeholder|spacer|blank|transparent|logo|icon|favicon|avatar|'
+    r'banner|flag|pixel|loading|thumb(nail)?[-_]?(small|xs)|1x1|/ads?/)', re.I)
+
+
+def _candidates(html):
+    """Every picture a page offers for itself, best first."""
+    out = []
+    for pattern in (OG_IMAGE, OG_IMAGE_REVERSED, LINK_IMAGE, LD_IMAGE):
+        for m in pattern.finditer(html):
+            out.append(m.group(1).strip())
+    widest = []
+    for tag in IMG_TAG.findall(html)[:400]:
+        src = IMG_SRC.search(tag)
+        if not src:
+            continue
+        width = IMG_W.search(tag)
+        widest.append((int(width.group(1)) if width else 0, src.group(1).strip()))
+    widest.sort(key=lambda w: -w[0])
+    out.extend(url for width, url in widest[:12] if width >= 150)
+
+    seen, clean = set(), []
+    for url in out:
+        # JSON-LD is JSON inside HTML, so its URLs arrive with the slashes
+        # escaped: "https:\/\/example.com\/a.jpg".
+        url = url.replace("&amp;", "&").replace("\\/", "/")
+        if not url or url.startswith("data:") or url in seen or JUNK_IMAGE.search(url):
+            continue
+        seen.add(url)
+        clean.append(url)
+    return clean[:8]
 
 
 def _is_public_host(host):
@@ -290,6 +346,50 @@ def _fetch(url, want_image=False):
         return None, None
 
 
+def _dimensions(body):
+    """Width and height from the first bytes of an image, or None.
+
+    Enough of each format's header to read the size without decoding the image
+    or adding a dependency. Anything not recognised returns None and is let
+    through: the point is to reject what is provably tiny, not to be strict.
+    """
+    try:
+        if body[:8] == b"\x89PNG\r\n\x1a\n" and body[12:16] == b"IHDR":
+            return (int.from_bytes(body[16:20], "big"),
+                    int.from_bytes(body[20:24], "big"))
+        if body[:3] == b"GIF":
+            return (int.from_bytes(body[6:8], "little"),
+                    int.from_bytes(body[8:10], "little"))
+        if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+            chunk = body[12:16]
+            if chunk == b"VP8X":
+                return (int.from_bytes(body[24:27], "little") + 1,
+                        int.from_bytes(body[27:30], "little") + 1)
+            if chunk == b"VP8 ":
+                return (int.from_bytes(body[26:28], "little") & 0x3FFF,
+                        int.from_bytes(body[28:30], "little") & 0x3FFF)
+            return None
+        if body[:2] == b"\xff\xd8":
+            i = 2
+            while i + 9 < len(body):
+                if body[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = body[i + 1]
+                if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                    i += 2
+                    continue
+                length = int.from_bytes(body[i + 2:i + 4], "big")
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    return (int.from_bytes(body[i + 7:i + 9], "big"),
+                            int.from_bytes(body[i + 5:i + 7], "big"))
+                i += 2 + length
+            return None
+    except Exception:
+        return None
+    return None
+
+
 def _images_for(sources):
     """The picture each of the first few sources advertises for itself.
 
@@ -297,8 +397,11 @@ def _images_for(sources):
     the picture that page says represents this thing, it comes with the page
     as its attribution, and it is one fetch instead of another paid API.
     """
+    # A product page before a help page, whatever the search ranked first.
+    ordered = sorted(sources, key=lambda s: 1 if NOT_A_PRODUCT_PAGE.search(
+        s["site"] + urlparse(s["url"]).path) else 0)
     images = []
-    for source in sources[:FETCH_MAX_PAGES]:
+    for source in ordered[:FETCH_MAX_PAGES]:
         ctype, body = _fetch(source["url"])
         if not body:
             continue
@@ -306,19 +409,21 @@ def _images_for(sources):
             html = body.decode("utf-8", "ignore")
         except Exception:
             continue
-        match = OG_IMAGE.search(html) or OG_IMAGE_REVERSED.search(html)
-        if not match:
-            continue
-        candidate = urljoin(source["url"], match.group(1).strip())
-        # Confirmed to be a real image before it is shown, so the answer never
-        # promises a picture that turns out to be a 404 or an HTML page.
-        ctype, _body = _fetch(candidate, want_image=True)
-        if not ctype:
-            continue
-        images.append({"kind": "image", "name": "From %s" % source["site"],
-                       "url": candidate, "source": source["url"]})
-        # One picture, from the best-ranked page. The second source is usually a
-        # support or listing page whose og:image is that site's own banner, so
-        # taking two reliably produced one product and one logo.
-        break
+        for raw in _candidates(html):
+            candidate = urljoin(source["url"], raw)
+            # Confirmed to be a real image before it is shown, so the answer
+            # never promises a picture that turns out to be a 404 or a page.
+            ctype, body = _fetch(candidate, want_image=True)
+            if not ctype:
+                continue
+            size = _dimensions(body or b"")
+            if size and (size[0] < MIN_IMAGE_PX or size[1] < MIN_IMAGE_PX):
+                continue
+            images.append({"kind": "image", "name": source["site"],
+                           "url": candidate, "source": source["url"]})
+            break
+        # One picture is what was asked for. Pages after the first are tried
+        # only because the first often has none.
+        if images:
+            break
     return images

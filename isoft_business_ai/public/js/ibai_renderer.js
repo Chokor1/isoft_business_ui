@@ -322,14 +322,40 @@ IBAI.render_result = function (res, opts) {
 			if (!/^(https?:\/\/|\/)/.test(url)) return;
 			const name = m.name || url.split('/').pop();
 			if (m.kind === 'image') {
+				// The picture is the answer, so it is shown at a size worth
+				// looking at, with the place it came from as a caption under
+				// it rather than a link standing in for it.
+				const $fig = $('<figure class="ibai-media-fig"></figure>');
 				const $a = $('<a class="ibai-media-img" target="_blank" rel="noopener"></a>')
-					.attr('href', url).attr('title', name);
+					.attr('href', m.source || url).attr('title', name);
 				$('<img>').attr('src', url).attr('alt', name)
 					.attr('loading', 'lazy')
-					// A dead file path should leave no broken-image icon.
-					.on('error', function () { $(this).closest('.ibai-media-img').remove(); })
+					// No referrer: some sites refuse to serve a picture to
+					// another origin, and the ERP's address is not theirs to
+					// collect either.
+					.attr('referrerpolicy', 'no-referrer')
+					// A picture that will not load leaves a link to where it
+					// lives, rather than a broken icon or a silent gap.
+					.on('error', function () {
+						const $f = $(this).closest('.ibai-media-fig');
+						$f.addClass('is-missing');
+						$f.find('.ibai-media-img').remove();
+						$('<a class="ibai-media-file" target="_blank" rel="noopener"></a>')
+							.attr('href', m.source || url)
+							.text(__('Picture at {0}', [name]))
+							.prependTo($f);
+					})
 					.appendTo($a);
-				$media.append($a);
+				$fig.append($a);
+				if (m.source) {
+					const $cap = $('<figcaption></figcaption>');
+					$('<a target="_blank" rel="noopener"></a>')
+						.attr('href', m.source).text(name).appendTo($cap);
+					$cap.appendTo($fig);
+				} else if (name) {
+					$('<figcaption></figcaption>').text(name).appendTo($fig);
+				}
+				$media.append($fig);
 			} else {
 				const $a = $('<a class="ibai-media-file" target="_blank" rel="noopener"></a>')
 					.attr('href', url);
