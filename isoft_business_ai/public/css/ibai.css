@@ -489,14 +489,26 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 
 .ibai-turn { margin-bottom: var(--ibai-5); }
 .ibai-turn-user { display: flex; justify-content: flex-end; }
+/* The cap belongs on the wrapper, not on the bubble inside it.
+   A user turn is  .ibai-turn-user > div > .ibai-bubble , and that middle div
+   is the flex item, so it is sized shrink-to-fit from its own content. A
+   percentage max-width on the bubble is then resolved against a box that was
+   just measured from the bubble: 86% of exactly-enough is never enough, so
+   every message wrapped - "by qty" came out as "by" and "qty" on two lines,
+   and "ledger" broke mid-word. Even "hi" wrapped. */
+.ibai-turn-user > div { max-width: 86%; min-width: 0; }
 .ibai-bubble {
   background: var(--ibai-accent-soft);
   border: 1px solid var(--ibai-accent-line);
   color: var(--ibai-text);
   border-radius: var(--ibai-r); border-bottom-right-radius: var(--ibai-1);
-  padding: 9px var(--ibai-3); max-width: 86%;
+  padding: 9px var(--ibai-3); max-width: 100%;
   font-size: 14px; line-height: 1.6; overflow-wrap: break-word;
 }
+/* The desk gives every <p> a bottom margin; inside a bubble the last one just
+   adds a gap under the text. */
+.ibai-bubble p, .ibai-answer p { margin: 0 0 .6em; }
+.ibai-bubble p:last-child, .ibai-answer p:last-child { margin-bottom: 0; }
 .ibai-turn-bot { position: relative; }
 .ibai-answer { font-size: 15px; line-height: 1.6; overflow-wrap: break-word; }
 .ibai-answer strong { font-weight: 600; }
