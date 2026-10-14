@@ -55,6 +55,23 @@ Then enable the assistant in **Isoft Business AI Settings** and grant the
 **Business AI User** role to whoever should see it. A `bench restart` is needed
 after changing the key, because gunicorn runs with `--preload`.
 
+## When it will not answer
+
+Ask the app what it is missing, rather than reading a traceback:
+
+```bash
+env/bin/python apps/isoft_business_ai/isoft_business_ai/tests/readiness_check.py \
+    --site <your-site>
+```
+
+It reports the assistant switch, the provider SDK and its version, the key in
+`site_config.json`, the configured model and the caller's role, and exits
+non-zero if any of them is missing. The same report is available in the desk as
+`isoft_business_ai.api.readiness`.
+
+Remember `bench restart` after any Python change: gunicorn runs with
+`--preload`, so workers keep the old code until they are replaced.
+
 ## Tests
 
 ```bash

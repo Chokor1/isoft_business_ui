@@ -528,6 +528,47 @@ def export_result(message, index=0):
 
 
 @frappe.whitelist()
+def readiness():
+    """Everything that has to be true before a question can be answered.
+
+    Written because a missing provider SDK first showed up as a bare
+    ModuleNotFoundError on a production migrate, and there was no way to ask
+    the app what it was missing.
+    """
+    _check_access()
+    import importlib
+
+    settings = frappe.get_single("Isoft Business AI Settings")
+    provider = (settings.get("provider") or "openai").strip().lower()
+    module = {"openai": "openai", "anthropic": "anthropic"}.get(provider, provider)
+    conf_key = "openai_api_key" if provider == "openai" else "anthropic_api_key"
+
+    try:
+        importlib.import_module(module)
+        sdk = True
+        sdk_detail = getattr(importlib.import_module(module), "__version__", "installed")
+    except ImportError:
+        sdk = False
+        sdk_detail = ("not installed - run: ./env/bin/pip install -r "
+                      "apps/isoft_business_ai/requirements.txt && bench restart")
+
+    checks = [
+        {"check": "Assistant enabled", "ok": bool(settings.get("enabled")),
+         "detail": "Isoft Business AI Settings"},
+        {"check": "Provider SDK (%s)" % module, "ok": sdk, "detail": str(sdk_detail)},
+        {"check": "API key in site_config", "ok": bool(frappe.conf.get(conf_key)),
+         "detail": "key: %s" % conf_key},
+        {"check": "Model configured", "ok": bool(settings.get("model")),
+         "detail": settings.get("model") or "none"},
+        {"check": "You hold the %s role" % ROLE,
+         "ok": ROLE in frappe.get_roles() or frappe.session.user == "Administrator",
+         "detail": "or Administrator"},
+    ]
+    return {"ready": all(c["ok"] for c in checks), "provider": provider,
+            "checks": checks}
+
+
+@frappe.whitelist()
 def test_connection():
     """Settings button. Restricted to System Manager: it spends money."""
     if "System Manager" not in frappe.get_roles():
