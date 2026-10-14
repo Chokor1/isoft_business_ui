@@ -188,7 +188,7 @@ def _likely_doctypes(query):
     of the tools actually take as a parameter. Transactions follow, found by
     their naming series ("PP ALV2026/7") or by who they are for.
     """
-    return ["Customer", "Supplier", "Item",
+    return ["Customer", "Supplier", "Item", "Account", "Warehouse",
             "Quotation", "Sales Order", "Sales Invoice", "Delivery Note",
             "Purchase Order", "Purchase Invoice", "Purchase Receipt",
             "Material Request", "Stock Entry", "Payment Entry", "Journal Entry"]
@@ -217,58 +217,167 @@ def _normalise(text):
         return text
 
 
-def _business_doctypes():
-    """Every doctype a user could sensibly mention, cached per site."""
+# The desk may be in English while the people using it think in Portuguese, so
+# every doctype is matchable in both whatever the account is set to.
+SECOND_LANGUAGE = "pt"
+
+
+def _second_language():
+    """The Portuguese dictionary, keyed by the English source string.
+
+    Loaded straight from the translation files rather than through
+    _(name, lang="pt"): in this version of Frappe, get_full_dict() returns
+    whatever dictionary the request already cached and ignores the language it
+    was asked for, so inside an English session that call quietly hands back
+    English and every Portuguese term stops matching.
+    """
+    try:
+        from frappe.translate import load_lang
+
+        return load_lang(SECOND_LANGUAGE) or {}
+    except Exception:
+        return {}
+
+
+def _match_terms(*names):
+    """Every spelling of one doctype a person might type."""
+    terms = []
+    for n in names:
+        n = _normalise(n)
+        if n and n not in terms:
+            terms.append(n)
+    return terms
+
+
+def _catalogue():
+    """Every mentionable doctype, named in both languages. Cached per language.
+
+    Built once per desk language rather than per keystroke: the list is 280
+    rows and the translation lookup behind each label is not free. `bench
+    migrate` clears it, which is the only time the set can change.
+    """
+    lang = frappe.local.lang or "en"
+
     def build():
+        out = []
+        second = _second_language()
         rows = frappe.get_all("DocType", fields=["name"],
                               filters={"istable": 0, "issingle": 0},
                               limit_page_length=0)
-        return [r["name"] for r in rows if is_business_doctype(r["name"])]
+        for r in rows:
+            name = r["name"]
+            if not is_business_doctype(name):
+                continue
+            label = _(name)
+            out.append({
+                "doctype": name,
+                "label": label,
+                "terms": _match_terms(name, label),
+                "alt": [t for t in _match_terms(second.get(name))
+                        if t not in _match_terms(name, label)],
+                "common": 1 if name in COMMON_DOCTYPES else 0,
+            })
+        out.sort(key=lambda d: (-d["common"], d["label"]))
+        return out
 
-    return frappe.cache().get_value("ibai_business_doctypes", build) or []
+    return frappe.cache().get_value("ibai_mention_catalogue:" + lang, build) or []
+
+
+def _business_doctypes():
+    """Every doctype a user could sensibly mention."""
+    return [d["doctype"] for d in _catalogue()]
+
+
+def _rank(terms, needle):
+    """How well a doctype matches what was typed; None if it does not.
+
+    Only prefixes count - of the whole name, or of a word inside it. Matching a
+    needle found anywhere at all is what made these suggestions useless: "cu"
+    offered Loan Security Pledge, and "su" offered nothing a buyer wanted.
+    """
+    best = None
+    for term in terms:
+        if term == needle:
+            rank = 0
+        elif term.startswith(needle):
+            rank = 1
+        elif any(word.startswith(needle) for word in term.split()):
+            rank = 2
+        else:
+            continue
+        if best is None or rank < best:
+            best = rank
+    return best
+
+
+def _rank_entry(entry, needle):
+    """A doctype's match tier, its own language preferred over the other one.
+
+    A Portuguese spelling still matches inside an English desk, but one tier
+    lower, so an English user typing "cu" is offered Customer and Customs
+    Tariff Number before Cost Center - which only matches because "custo"
+    begins that way.
+    """
+    rank = _rank(entry.get("terms") or [], needle)
+    if rank is not None:
+        return rank
+    rank = _rank(entry.get("alt") or [], needle)
+    return None if rank is None else rank + 1
+
+
+def _score(rank, common):
+    """Two orders of preference flattened into one sort key.
+
+    A better match always wins, and between equal matches the twenty doctypes
+    people actually mention come first - so "account" leads with Account, not
+    with Accounting Dimension Filter.
+    """
+    return rank * 2 + (0 if common else 1)
 
 
 def search_doctypes(term, limit=8):
-    """Doctypes matching what has been typed, in the user's own language.
-
-    Frappe already translates every doctype name, so "cliente" finds Customer
-    and "armazem" finds Warehouse without this app shipping a glossary of its
-    own. The label returned is translated; the doctype is not, because that is
-    what every other tool takes as a parameter.
-    """
+    """Doctypes matching what has been typed, in the user's own language."""
     needle = _normalise(term)
     hits = []
-    for name in _business_doctypes():
-        if not frappe.has_permission(name, "read"):
+    for d in _catalogue():
+        if not frappe.has_permission(d["doctype"], "read"):
             continue
-        label = _(name)
-        english, translated = _normalise(name), _normalise(label)
-        if not needle:
-            rank = 0 if name in COMMON_DOCTYPES else 2
-        elif english.startswith(needle) or translated.startswith(needle):
-            rank = 0
-        elif needle in english or needle in translated:
-            rank = 1
-        else:
+        rank = _rank_entry(d, needle) if needle else 0
+        if rank is None:
             continue
-        if name not in COMMON_DOCTYPES:
-            rank += 1
-        hits.append({"doctype": name, "label": label, "rank": rank})
+        hits.append((_score(rank, d["common"]), d["label"], d["doctype"]))
 
-    hits.sort(key=lambda h: (h["rank"], h["label"]))
-    return [{"doctype": h["doctype"], "label": h["label"]} for h in hits[:limit]]
+    hits.sort()
+    return [{"doctype": dt, "label": label} for _s, label, dt in hits[:limit]]
+
+
+def mention_catalogue():
+    """The whole mentionable catalogue, for matching in the browser.
+
+    Sent once per page instead of a round trip per keystroke, which is what
+    lets a bare "su" offer Supplier before the word is finished. It carries the
+    match terms, so Portuguese works without the browser knowing any
+    Portuguese; the permission filter is applied here, not there.
+    """
+    return [{"doctype": d["doctype"], "label": d["label"],
+             "terms": d["terms"], "alt": d["alt"], "common": d["common"]}
+            for d in _catalogue() if frappe.has_permission(d["doctype"], "read")]
 
 
 def resolve_doctype(text):
-    """Turn whatever was typed before the colon into a real doctype name."""
-    text = (text or "").strip()
-    if not text:
+    """Turn whatever was typed before the @ or the colon into a real doctype."""
+    needle = _normalise(text)
+    if not needle:
         return None
-    for name in _business_doctypes():
-        if _normalise(name) == _normalise(text) or _normalise(_(name)) == _normalise(text):
-            return name
-    found = search_doctypes(text, limit=1)
-    return found[0]["doctype"] if found else None
+    best = None
+    for d in _catalogue():
+        rank = _rank_entry(d, needle)
+        if rank is None:
+            continue
+        key = (_score(rank, d["common"]), d["label"])
+        if best is None or key < best[0]:
+            best = (key, d["doctype"])
+    return best[1] if best else None
 
 
 def find_elsewhere(name, exclude=None, limit=4):

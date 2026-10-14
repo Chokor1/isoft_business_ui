@@ -130,6 +130,65 @@
     "termo": "Stock Adjustment"
    },
    "note": "Account names carry their number and company suffix."
+  },
+  {
+   "id": "EX-V04",
+   "question": "What did customer CUST-0001 buy from us this year, item by item?",
+   "expected_tool": "vendas_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "customer": "CUST-0001"
+   },
+   "note": "Item-level sales for ONE customer; no other tool breaks a customer down to items."
+  },
+  {
+   "id": "EX-V05",
+   "question": "Which customers bought last year and nothing at all this year?",
+   "expected_tool": "clientes_inactivos",
+   "expected_args": {
+    "from_date": "2025-01-01",
+    "to_date": "2025-12-31",
+    "desde": "2026-01-01",
+    "ate": "2026-12-31"
+   },
+   "note": "A set difference over two complete lists. Two capped ranked pages cannot answer it."
+  },
+  {
+   "id": "EX-C02",
+   "question": "What do we buy from supplier SUPP-0001, item by item?",
+   "expected_tool": "compras_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "supplier": "SUPP-0001"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-C03",
+   "question": "Which purchase orders have been unreceived for more than 30 days?",
+   "expected_tool": "compras_pipeline",
+   "expected_args": {
+    "dias_minimos": 30
+   },
+   "note": "Open purchase orders by age; the header totals are uncapped."
+  },
+  {
+   "id": "EX-C04",
+   "question": "What is our committed spend on open purchase orders?",
+   "expected_tool": "compras_pipeline",
+   "expected_args": {},
+   "note": ""
+  },
+  {
+   "id": "EX-K02",
+   "question": "Do we have negative stock anywhere?",
+   "expected_tool": "stock_actual",
+   "expected_args": {
+    "apenas_negativo": true
+   },
+   "note": "A value-ranked page can never surface a negative line."
   }
  ]
 }

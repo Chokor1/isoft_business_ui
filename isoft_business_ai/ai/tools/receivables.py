@@ -2,7 +2,7 @@
 
 from frappe.utils import flt, nowdate
 
-from isoft_business_ai.ai.aging import BUCKETS, build_aging
+from isoft_business_ai.ai.aging import BUCKETS, aging_note, build_aging
 from isoft_business_ai.ai.formatting import currency, integer, text
 from isoft_business_ai.ai.query import describe, fetch
 from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
@@ -44,11 +44,7 @@ def contas_a_receber(as_on=None, customer=None, apenas_vencido=False, limite=50,
     columns += [currency(k, label) for k, label in BUCKETS]
     columns += [currency("total", "Total outstanding"), integer("facturas", "Invoices")]
 
-    note = (
-        "Grand total across all %d customers with a balance: %s (%d invoices). "
-        "The table lists the %d largest."
-        % (grand["parties"], round(grand["total"], 2), grand["facturas"], grand["listed"])
-    )
+    note = aging_note(grand, "customers", apenas_vencido=bool(apenas_vencido))
 
     return ToolResult(
         columns=columns,

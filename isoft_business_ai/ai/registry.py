@@ -30,7 +30,13 @@ class ToolResult(object):
     """
 
     def __init__(self, columns, rows, source, filters_applied=None, note=None,
-                 header=None, links=None):
+                 header=None, links=None, aux=False):
+        # ``aux`` marks a result the model needed but the reader did not ask
+        # for - resolving a half-remembered name to a code, say. The model still
+        # gets it and the step still shows in the provenance strip, but the
+        # browser does not print its table under the answer, where it reads as
+        # though it were the answer.
+        self.aux = bool(aux)
         # ``header`` carries field/value pairs for a single document, which a
         # table cannot express. Rendered as a definition list above the table.
         self.header = header
@@ -60,6 +66,7 @@ class ToolResult(object):
             "filters_applied": self.filters_applied,
             "note": self.note,
             "truncated": self.truncated,
+            "aux": self.aux,
         }
 
     def for_model(self):

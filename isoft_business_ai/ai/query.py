@@ -133,16 +133,39 @@ def grand_total(doctype, filters, value_field, count_field="name",
             int(r.get("groups") or 0) if group_field else 0)
 
 
-def total_note(total, documents, groups, document_noun, group_noun):
+def page_share(rows, value_key, total):
+    """What the listed page itself comes to, and its share of the whole.
+
+    Questions like "what share comes from the top five customers" otherwise
+    force the model to add the rows and divide, and it gets that wrong: on a
+    live site it reported a share two hundredths of a percent off the true one.
+    Both numbers are given here so the answer is a quotation, not a sum.
+    """
+    if not rows:
+        return ""
+    shown = sum(flt(r.get(value_key)) for r in rows)
+    out = "The %d rows listed come to %s" % (len(rows), round(shown, 2))
+    if total:
+        out += ", which is %s%% of that grand total" % round(shown / flt(total) * 100, 2)
+    return out + "; both figures are already worked out, so quote them rather than adding up."
+
+
+def total_note(total, documents, groups, document_noun, group_noun,
+               rows=None, value_key=None):
     """The sentence every grouped tool ends with, worded so the two counts
     cannot be mistaken for each other."""
     if groups:
         scope = "across %d %s in %d %s" % (groups, group_noun, documents, document_noun)
     else:
         scope = "across %d %s" % (documents, document_noun)
-    return ("Grand total over everything these filters match: %s %s. "
+    note = ("Grand total over everything these filters match: %s %s. "
             "The table is a capped page of that set - do not add its rows up yourself."
             % (round(total, 2), scope))
+    if rows is not None and value_key:
+        extra = page_share(rows, value_key, total)
+        if extra:
+            note += " " + extra
+    return note
 
 
 def grouped_total(doctype, fields, filters, group_by, value_key,

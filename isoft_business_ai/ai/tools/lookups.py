@@ -16,6 +16,37 @@ from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 from isoft_business_ai.ai.security import allowed_companies, resolve_company
 
 
+# People call anyone they deal with "the customer", so a party search that comes
+# back empty very often means the name is simply on the other side of the
+# ledger. Saying where it really is turns a dead end into a correction the
+# assistant can act on by itself - the difference between "I could not find
+# that customer" and an answer about what we buy from them.
+OTHER_SIDE = {
+    "Customer": ("Supplier", "supplier_name", "procurar_fornecedor",
+                 "the compras_* tools (compras_por_artigo with supplier=...)"),
+    "Supplier": ("Customer", "customer_name", "procurar_cliente",
+                 "the vendas_* tools (vendas_por_artigo with customer=...)"),
+}
+
+
+def _other_side_note(doctype, termo):
+    """Whether this name is a party of the opposite kind, and what to do then."""
+    other, title_field, search_tool, use = OTHER_SIDE[doctype]
+    like = "%" + (termo or "").strip() + "%"
+    try:
+        rows = fetch(other, fields=["name", title_field],
+                     or_filters=[[title_field, "like", like], ["name", "like", like]],
+                     order_by=title_field + " asc", limit=5)
+    except Exception:
+        return None
+    if not rows:
+        return None
+    names = ", ".join("%s (%s)" % (r.get(title_field) or r["name"], r["name"]) for r in rows[:3])
+    return ("No %s matches '%s', but this name exists as a %s: %s. Treat it as a %s - "
+            "call %s and answer with %s. Say which side it turned out to be on."
+            % (doctype.lower(), termo, other.lower(), names, other.lower(), search_tool, use))
+
+
 @ai_tool(
     name="procurar_cliente",
     description=(
@@ -48,7 +79,11 @@ def procurar_cliente(termo, limite=15):
         ],
         rows=rows,
         source="Customer | search for '%s'" % termo,
-        note="Use the value in the Code column as the 'customer' parameter in other tools.",
+        note=(_other_side_note("Customer", termo)
+              or "No customer matches '%s' - and the name is not a supplier either." % termo)
+        if not rows else
+        "Use the value in the Code column as the 'customer' parameter in other tools.",
+        aux=True,
     )
 
 
@@ -78,7 +113,11 @@ def procurar_fornecedor(termo, limite=15):
         columns=[text("name", "Code"), text("supplier_name", "Name"), text("supplier_group", "Group")],
         rows=rows,
         source="Supplier | search for '%s'" % termo,
-        note="Use the value in the Code column as the 'supplier' parameter.",
+        note=(_other_side_note("Supplier", termo)
+              or "No supplier matches '%s' - and the name is not a customer either." % termo)
+        if not rows else
+        "Use the value in the Code column as the 'supplier' parameter.",
+        aux=True,
     )
 
 
@@ -114,6 +153,7 @@ def procurar_artigo(termo, limite=15):
         rows=rows,
         source="Item | search for '%s'" % termo,
         note="Use the value in the Code column as the 'item_code' parameter.",
+        aux=True,
     )
 
 
@@ -205,6 +245,7 @@ def procurar_armazem(termo=None, company=None):
         source="Warehouse in %s" % company,
         filters_applied={"company": company, "termo": termo},
         note=note,
+        aux=True,
     )
 
 
@@ -255,4 +296,5 @@ def procurar_conta(termo, apenas_movimento=True, company=None):
         source="Account in %s" % company,
         filters_applied={"company": company, "termo": termo},
         note=note,
+        aux=True,
     )

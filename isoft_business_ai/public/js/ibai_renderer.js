@@ -162,9 +162,19 @@ IBAI.stripMentions = function (text) {
 IBAI.currentDocument = function () {
 	try {
 		const route = frappe.get_route() || [];
-		if (route[0] === 'Form' && route[1] && route[2]) {
-			return { doctype: route[1], name: decodeURIComponent(route[2]) };
+		if (route[0] !== 'Form' || !route[1] || !route[2]) return null;
+		const doctype = route[1];
+		// Not every form holds a business record. Sitting on a settings page
+		// used to offer that settings page as a mention - first in the list
+		// and pre-selected, so one Tab wrote "@[Isoft Business AI Settings:
+		// Isoft Business AI Settings]" into the question.
+		const known = IBAI.knownDoctype(doctype);
+		if (known === false) return null;
+		if (known === null) {
+			const meta = frappe.get_meta ? frappe.get_meta(doctype) : null;
+			if (meta && (meta.issingle || meta.istable)) return null;
 		}
+		return { doctype: doctype, name: decodeURIComponent(route[2]) };
 	} catch (e) {
 		/* not on a form */
 	}
@@ -266,6 +276,11 @@ IBAI.fitPlaceholder = function ($input, long, short) {
  */
 IBAI.render_result = function (res, opts) {
 	opts = opts || {};
+	// A lookup the model needed on the way to the answer is not an answer. It
+	// still shows in the step strip above, so the provenance is intact; printing
+	// its table under the answer made "here is the customer you named" look like
+	// the result of the question.
+	if (res.aux) return $();
 	const esc = IBAI.esc;
 	const columns = res.columns || [];
 	const rows = res.rows || [];
@@ -510,8 +525,135 @@ IBAI.sound = {
 /* ------------------------------------------------------- mention autocomplete */
 
 /**
+ * Every document type that can be mentioned, fetched once per page.
+ *
+ * Matching runs in the browser so two letters can offer Supplier before the
+ * word is finished. A round trip per keystroke was slower than typing, which
+ * is why nobody ever found out what could be mentioned.
+ */
+IBAI._doctypes = null;
+IBAI._doctypesWaiting = null;
+IBAI.loadDoctypes = function (then) {
+	if (IBAI._doctypes) { if (then) then(IBAI._doctypes); return; }
+	if (IBAI._doctypesWaiting) { if (then) IBAI._doctypesWaiting.push(then); return; }
+	IBAI._doctypesWaiting = then ? [then] : [];
+	const done = list => {
+		IBAI._doctypes = list || [];
+		const waiting = IBAI._doctypesWaiting || [];
+		IBAI._doctypesWaiting = null;
+		waiting.forEach(fn => fn(IBAI._doctypes));
+	};
+	frappe.call({
+		method: 'isoft_business_ai.api.mention_catalogue',
+		callback: r => done(r.message || []),
+		error: () => done([]),
+	});
+};
+
+/** Whether this type is one the assistant can be asked about at all. */
+IBAI.knownDoctype = function (doctype) {
+	const all = IBAI._doctypes;
+	if (!all) return null;          // not loaded yet - caller decides
+	return all.some(d => d.doctype === doctype);
+};
+
+/**
+ * Match tier of a list of spellings, or -1 for no match.
+ *
+ * Only prefixes count, of the whole name or of a word inside it. Matching a
+ * needle found anywhere at all is what made these suggestions useless: "cu"
+ * offered Loan Security Pledge. Mirrors _rank() in ai/documents.py.
+ */
+IBAI._rankTerms = function (terms, needle) {
+	let best = -1;
+	(terms || []).forEach(term => {
+		let rank;
+		if (term === needle) rank = 0;
+		else if (term.indexOf(needle) === 0) rank = 1;
+		else if (term.split(' ').some(w => w.indexOf(needle) === 0)) rank = 2;
+		else return;
+		if (best === -1 || rank < best) best = rank;
+	});
+	return best;
+};
+
+/**
+ * Document types matching a part-written word, best first.
+ *
+ * The user's own language outranks the other one: a Portuguese spelling still
+ * finds the type inside an English desk, but one tier down, so "cu" offers
+ * Customer before Cost Center - which only matches because "custo" starts
+ * that way.
+ */
+IBAI.matchDoctypes = function (word, limit) {
+	const needle = IBAI.normalise(word || '').trim();
+	if (!needle) return [];
+	const hits = [];
+	(IBAI._doctypes || []).forEach(d => {
+		let rank = IBAI._rankTerms(d.terms, needle);
+		if (rank === -1) {
+			rank = IBAI._rankTerms(d.alt, needle);
+			if (rank === -1) return;
+			rank += 1;
+		}
+		hits.push({ doctype: d.doctype, label: d.label, rank: rank,
+			score: rank * 2 + (d.common ? 0 : 1) });
+	});
+	hits.sort((a, b) => a.score - b.score || a.label.localeCompare(b.label));
+	return hits.slice(0, limit || 5);
+};
+
+/** The word being typed just before the caret, if it could name a type. */
+IBAI.wordAtCaret = function (value, caret) {
+	const upto = (value || '').slice(0, caret);
+	const m = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'-]*)$/.exec(upto);
+	if (!m) return null;
+	return { text: m[1], start: caret - m[1].length, end: caret };
+};
+
+/**
+ * The mention being typed at the caret, in any of the three shapes people use:
+ *
+ *   "@acme"            - search everything
+ *   "Supplier@acme"    - the type written first, which is how people reach for
+ *                        it out loud ("fornecedor@...")
+ *   "@Supplier:acme"   - the original shape, still accepted
+ *
+ * `resolve` turns the word before the @ into a real doctype, or null. It is
+ * passed in rather than looked up here so this stays a pure function: without
+ * it, "ali@isoft.co.ao" would scope an email address to some unlucky doctype.
+ */
+IBAI.mentionTokenAt = function (value, caret, resolve) {
+	value = value || '';
+	const upto = value.slice(0, caret);
+	const at = upto.lastIndexOf('@');
+	if (at === -1) return null;
+	const after = upto.slice(at + 1);
+	if (/[\]\n]/.test(after) || after.length > 80) return null;
+
+	const before = IBAI.wordAtCaret(value, at);
+	const scope = before && resolve ? resolve(before.text) : null;
+	const colon = after.indexOf(':');
+	const written = colon === -1 ? null : after.slice(0, colon).trim();
+	const doctype = scope || (written && resolve ? resolve(written) : null) || null;
+
+	return {
+		// What gets replaced when something is picked: the type the user wrote
+		// goes too, or "Supplier@" would be left stranded before the chip.
+		start: scope ? before.start : at,
+		end: caret,
+		doctype: doctype,
+		// A type written before the @ cannot also be written after the colon.
+		query: scope ? after : (colon === -1 ? after : after.slice(colon + 1)),
+		scoped: !!doctype,
+		// Identity of the attempt, for discarding a reply that arrived late.
+		key: (scope ? before.text : '') + '@' + after,
+	};
+};
+
+/**
  * Wire @ mentions onto a textarea: the open document first, then a search
- * across the common business document types.
+ * across the business document types, in either language.
  */
 IBAI.attachMentions = function ($input, $anchor) {
 	const $menu = $('<div class="ibai-mentions" hidden></div>').appendTo($anchor);
@@ -520,18 +662,20 @@ IBAI.attachMentions = function ($input, $anchor) {
 	let token = null;
 	let timer = null;
 
+	IBAI.loadDoctypes();
+
 	function close() {
 		$menu.prop('hidden', true).empty();
 		items = [];
 		token = null;
 	}
 
-	/** Replace the token being typed, and say whether the menu should stay up. */
-	function replaceToken(text, keepOpen) {
+	/** Replace the mention being typed, and say whether the menu stays up. */
+	function write(text, keepOpen) {
 		const value = $input.val() || '';
 		const el = $input[0];
-		const caret = token.start + 1 + text.length;
-		$input.val(value.slice(0, token.start) + '@' + text +
+		const caret = token.start + text.length;
+		$input.val(value.slice(0, token.start) + text +
 			(keepOpen ? '' : ' ') + value.slice(token.end));
 		if (!keepOpen) { close(); }
 		$input.focus();
@@ -540,19 +684,19 @@ IBAI.attachMentions = function ($input, $anchor) {
 	}
 
 	function pick(item) {
+		if (!item || !token) return;
 		if (item.kind === 'doctype') {
-			// Stage one: the user chose a type. Leave the menu open and start
-			// searching inside it, which is the whole point of picking a type.
-			replaceToken(item.doctype + ':', true);
+			// Stage one: they chose a type. Leave the menu open and start
+			// searching inside it, which is the whole point of choosing one.
+			write(item.doctype + '@', true);
 			return;
 		}
-		const value = $input.val() || '';
-		$input.val(
-			value.slice(0, token.start) + IBAI.mentionToken(item.doctype, item.name) + ' ' +
-			value.slice(token.end)
-		);
-		close();
-		$input.trigger('input').focus();
+		if (item.kind === 'empty') return;
+		write(IBAI.mentionToken(item.doctype, item.name), false);
+	}
+
+	function head(text) {
+		$('<div class="ibai-mention-head"></div>').text(text).appendTo($menu);
 	}
 
 	function draw() {
@@ -560,63 +704,63 @@ IBAI.attachMentions = function ($input, $anchor) {
 		if (!items.length) { $menu.prop('hidden', true); return; }
 		let lastKind = null;
 		items.forEach((it, i) => {
-			if (it.kind !== lastKind) {
-				lastKind = it.kind;
-				$('<div class="ibai-mention-head"></div>')
-					.text(it.kind === 'doctype' ? __('Type of document') : __('Documents'))
-					.appendTo($menu);
+			const kind = it.kind === 'doctype' ? 'doctype' : 'doc';
+			if (kind !== lastKind) {
+				lastKind = kind;
+				head(kind === 'doctype' ? __('Type of document')
+					: (token && token.doctype ? token.doctype : __('Documents')));
 			}
 			const $row = $('<div class="ibai-mention-row"></div>')
 				.toggleClass('active', i === active)
-				.toggleClass('is-doctype', it.kind === 'doctype');
+				.toggleClass('is-doctype', it.kind === 'doctype')
+				.toggleClass('is-empty', it.kind === 'empty');
 			if (it.kind === 'doctype') {
-				$('<span class="ibai-mention-nm"></span>').text(it.label).appendTo($row);
+				// Shown as "Supplier@", because that is what picking it writes.
+				$('<span class="ibai-mention-nm"></span>')
+					.text(it.label + '@').appendTo($row);
 				if (it.label !== it.doctype) {
 					$('<span class="ibai-mention-lb"></span>').text(it.doctype).appendTo($row);
 				}
-				$('<span class="ibai-mention-go"></span>').text('\u2192').appendTo($row);
+				$('<span class="ibai-mention-go"></span>').text('→').appendTo($row);
+			} else if (it.kind === 'empty') {
+				$('<span class="ibai-mention-nm"></span>').text(it.text).appendTo($row);
 			} else {
-				$('<span class="ibai-mention-dt"></span>').text(it.dtLabel || it.doctype).appendTo($row);
+				$('<span class="ibai-mention-dt"></span>')
+					.text(it.dtLabel || it.doctype).appendTo($row);
 				$('<span class="ibai-mention-nm"></span>').text(it.name).appendTo($row);
 				if (it.label) $('<span class="ibai-mention-lb"></span>').text(it.label).appendTo($row);
 				if (it.here) {
 					$('<span class="ibai-mention-here"></span>').text(__('open now')).appendTo($row);
 				}
 			}
-			$row.on('mousedown', e => { e.preventDefault(); pick(it); });
+			if (it.kind !== 'empty') {
+				$row.on('mousedown', e => { e.preventDefault(); pick(it); });
+			}
 			$menu.append($row);
 		});
 		$menu.prop('hidden', false);
 	}
 
-	/** What is being typed after the last @, split into type and search. */
-	function tokenAtCaret() {
+	/** Strong enough to mean a type, rather than the left half of an email. */
+	function asDoctype(word) {
+		const found = IBAI.matchDoctypes(word, 1);
+		return found.length && found[0].rank <= 2 ? found[0].doctype : null;
+	}
+
+	function read() {
 		const el = $input[0];
-		const upto = (el.value || '').slice(0, el.selectionStart);
-		const at = upto.lastIndexOf('@');
-		if (at === -1) return null;
-		const term = upto.slice(at + 1);
-		if (/[\]\n]/.test(term) || term.length > 80) return null;
-		const colon = term.indexOf(':');
-		return {
-			start: at, end: el.selectionStart, term: term,
-			// "Customer:ferp" and "cliente:ferp" both mean the same thing; the
-			// server resolves the label back to the real doctype.
-			doctype: colon === -1 ? null : term.slice(0, colon).trim(),
-			query: colon === -1 ? term : term.slice(colon + 1),
-		};
+		return IBAI.mentionTokenAt(el.value, el.selectionStart, asDoctype);
 	}
 
 	$input.on('input click keyup', e => {
 		if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].indexOf(e.key) !== -1) return;
-		token = tokenAtCaret();
+		token = read();
 		if (!token) return close();
 
-		const scoped = !!token.doctype;
 		const here = IBAI.currentDocument();
 		const seed = [];
-		if (!scoped && here && (!token.term ||
-				here.name.toLowerCase().indexOf(token.term.toLowerCase()) !== -1)) {
+		if (!token.scoped && here && (!token.query ||
+				here.name.toLowerCase().indexOf(token.query.toLowerCase()) !== -1)) {
 			seed.push({ kind: 'doc', doctype: here.doctype, name: here.name,
 				label: '', here: true });
 		}
@@ -627,44 +771,48 @@ IBAI.attachMentions = function ($input, $anchor) {
 		clearTimeout(timer);
 		const snapshot = token;
 		timer = setTimeout(() => {
-			if (!token || token.term !== snapshot.term) return;
+			if (!token || token.key !== snapshot.key) return;
 			const calls = [$.Deferred(), $.Deferred()];
 
-			// Types only matter while the user has not committed to one.
-			if (scoped) {
+			// Types only matter while they have not committed to one.
+			if (snapshot.scoped) {
 				calls[0].resolve([]);
 			} else {
-				frappe.call({
-					method: 'isoft_business_ai.api.search_doctypes',
-					args: { query: snapshot.term, limit: 5 },
-					callback: r => calls[0].resolve(r.message || []),
-					error: () => calls[0].resolve([]),
-				});
+				calls[0].resolve(IBAI.matchDoctypes(snapshot.query, 5));
 			}
 			frappe.call({
 				method: 'isoft_business_ai.api.search_documents',
 				args: { query: snapshot.query, doctype: snapshot.doctype || undefined,
-					limit: scoped ? 10 : 6 },
+					limit: snapshot.scoped ? 10 : 6 },
 				callback: r => calls[1].resolve(r.message || []),
 				error: () => calls[1].resolve([]),
 			});
 
 			$.when.apply($, calls).done((types, docs) => {
-				if (!token || token.term !== snapshot.term) return;
+				if (!token || token.key !== snapshot.key) return;
 				const typeRows = (types || []).map(t => ({
 					kind: 'doctype', doctype: t.doctype, label: t.label }));
 				const docRows = (docs || [])
 					.filter(x => !seed.some(s => s.doctype === x.doctype && s.name === x.name))
 					.map(x => Object.assign({ kind: 'doc' }, x));
 				items = seed.concat(typeRows, docRows).slice(0, 12);
-				active = 0;
+				// A scope that matches nothing has to say so: otherwise the
+				// menu just vanishes and it looks like the @ stopped working.
+				if (!items.length && snapshot.scoped) {
+					items = [{ kind: 'empty', text: snapshot.query
+						? __('No {0} matching "{1}"', [snapshot.doctype, snapshot.query])
+						: __('No {0} you can see', [snapshot.doctype]) }];
+				}
+				active = items.length && items[0].kind === 'empty' ? -1 : 0;
 				draw();
 			});
-		}, 200);
+		}, 180);
 	});
 
 	$input.on('keydown', e => {
 		if ($menu.prop('hidden') || !items.length) return;
+		const real = items.filter(it => it.kind !== 'empty');
+		if (!real.length) { if (e.key === 'Escape') { e.stopPropagation(); close(); } return; }
 		if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; draw(); }
 		else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; draw(); }
 		else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(items[active]); }
@@ -758,21 +906,53 @@ IBAI.typeahead = function ($input, $anchor, onPick) {
 		return $m.length && !$m.prop('hidden');
 	}
 
+	let word = null;
+
 	function draw() {
 		$menu.empty();
 		if (!items.length) { close(); return; }
-		$('<div class="ibai-typeahead-head"></div>').text(__('Suggestions')).appendTo($menu);
+		let lastKind = null;
 		items.forEach((it, i) => {
-			$('<button type="button" class="ibai-typeahead-row"></button>')
+			if (it.kind !== lastKind) {
+				lastKind = it.kind;
+				$('<div class="ibai-typeahead-head"></div>')
+					.text(it.kind === 'doctype' ? __('Mention a document type')
+						: __('Suggestions'))
+					.appendTo($menu);
+			}
+			const $row = $('<button type="button" class="ibai-typeahead-row"></button>')
 				.toggleClass('active', i === active)
-				.text(it.text)
+				.toggleClass('is-doctype', it.kind === 'doctype')
 				.on('mousedown', e => { e.preventDefault(); pick(it); })
 				.appendTo($menu);
+			if (it.kind === 'doctype') {
+				$('<span class="ibai-typeahead-nm"></span>')
+					.text(it.label + '@').appendTo($row);
+				$('<span class="ibai-typeahead-hint"></span>')
+					.text(__('then type a name')).appendTo($row);
+			} else {
+				$row.text(it.text);
+			}
 		});
 		$menu.prop('hidden', false);
 	}
 
 	function pick(it) {
+		if (it.kind === 'doctype') {
+			if (!word) return;
+			// Hand over to the @ menu: write "Supplier@" where the part-typed
+			// word was, and let that search inside the type.
+			const el = $input[0];
+			const value = el.value || '';
+			const written = it.doctype + '@';
+			const caret = word.start + written.length;
+			$input.val(value.slice(0, word.start) + written + value.slice(word.end));
+			close();
+			$input.focus();
+			try { el.setSelectionRange(caret, caret); } catch (e) { /* ignore */ }
+			$input.trigger('input');
+			return;
+		}
 		close();
 		onPick(it.text);
 	}
@@ -783,7 +963,17 @@ IBAI.typeahead = function ($input, $anchor, onPick) {
 		// Once it is a sentence of their own, stop second-guessing them.
 		if (!value || value.length > 48) { close(); return; }
 		if (!IBAI._suggestions) { IBAI.loadSuggestions(refresh); return; }
-		items = IBAI.matchSuggestions(value, 5);
+		if (!IBAI._doctypes) { IBAI.loadDoctypes(refresh); }
+
+		const el = $input[0];
+		word = IBAI.wordAtCaret(el.value, el.selectionStart);
+		// Two letters is the whole point: "su" should reach Supplier without
+		// anyone having to know that @ is what starts a mention.
+		const types = word && word.text.length >= 2
+			? IBAI.matchDoctypes(word.text, 3) : [];
+		items = IBAI.matchSuggestions(value, 5)
+			.map(s => Object.assign({ kind: 'question' }, s))
+			.concat(types.map(t => Object.assign({ kind: 'doctype' }, t)));
 		active = -1;
 		draw();
 	}

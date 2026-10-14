@@ -1,11 +1,11 @@
-"""Stock movement and sales pipeline.
+"""Stock movement and the buying and selling pipelines.
 
 Both answer "how did we get here" rather than "where are we now": the existing
 stock tools read the current balance, and the sales tools read what was already
 invoiced. These read the movements and the demand that has not landed yet.
 """
 
-from frappe.utils import flt, nowdate
+from frappe.utils import add_days, date_diff, flt, nowdate
 
 from isoft_business_ai.ai.formatting import currency, integer, number, text
 from isoft_business_ai.ai.query import describe, fetch, fetch_reference, submitted
@@ -145,4 +145,102 @@ def sales_pipeline(company=None, limite=25):
         header=header,
         note=("Expired and lost quotations are excluded. Listing the largest first; "
               "the header totals cover every open document, not just those shown."),
+    )
+
+
+@ai_tool(
+    name="compras_pipeline",
+    description=(
+        "Purchase orders placed but not yet fully received or billed: value, age, how much "
+        "has arrived and how much is still outstanding. Use for 'open purchase orders', "
+        "'what have we ordered that has not arrived', 'committed spend', 'encomendas "
+        "pendentes', and - with dias_minimos - 'orders sitting unreceived for more than N "
+        "days'. The sales_pipeline tool is the selling side and does not cover this."
+    ),
+    params={
+        "dias_minimos": Param.integer(
+            "Only orders at least this many days old. Use 30 for 'sitting for more than "
+            "30 days'. Default 0, meaning every open order.", optional=True),
+        "supplier": Param.text("Restrict to one supplier (exact code).", optional=True),
+        "company": Param.text("Company.", optional=True),
+        "limite": Param.integer("Maximum orders listed. Default 25.", optional=True),
+    },
+    doctypes=["Purchase Order"],
+    group="compras",
+)
+def compras_pipeline(dias_minimos=0, supplier=None, company=None, limite=25):
+    company = resolve_company(company)
+    today = nowdate()
+    dias_minimos = int(dias_minimos or 0)
+
+    filters = submitted({
+        "company": company,
+        "status": ["in", ["To Receive and Bill", "To Receive", "To Bill"]],
+    })
+    if supplier:
+        filters["supplier"] = supplier
+    if dias_minimos:
+        filters["transaction_date"] = ["<=", add_days(today, -dias_minimos)]
+
+    found = fetch("Purchase Order",
+                  fields=["name", "supplier", "supplier_name", "transaction_date", "status",
+                          "base_grand_total as value", "per_received", "per_billed"],
+                  filters=filters, order_by="base_grand_total desc", limit=500)
+
+    rows, by_stage = [], {}
+    committed = pending = 0.0
+    for r in found:
+        value = flt(r["value"])
+        # What has not arrived yet, pro rata on the order value: Purchase Order
+        # carries a received percentage, not a received amount.
+        outstanding = value * (100.0 - flt(r.get("per_received"))) / 100.0
+        committed += value
+        pending += outstanding
+        by_stage.setdefault(r["status"], {"count": 0, "value": 0.0})
+        by_stage[r["status"]]["count"] += 1
+        by_stage[r["status"]]["value"] += value
+        rows.append({
+            "name": r["name"],
+            "supplier": (r.get("supplier_name") or r.get("supplier") or "").strip(),
+            "status": r["status"],
+            "date": r.get("transaction_date"),
+            "dias": date_diff(today, r.get("transaction_date")) if r.get("transaction_date") else None,
+            "value": value,
+            "recebido_pct": flt(r.get("per_received")),
+            "a_receber": outstanding,
+        })
+
+    rows.sort(key=lambda r: -r["value"])
+    header = {
+        "Open orders": len(rows),
+        "Committed value": round(committed, 2),
+        "Still to be received": round(pending, 2),
+        "As at": today,
+    }
+    if dias_minimos:
+        header["Older than"] = "%d days" % dias_minimos
+    for stage in sorted(by_stage):
+        header[stage] = "%d · %s" % (by_stage[stage]["count"], round(by_stage[stage]["value"], 2))
+
+    note = ("Submitted purchase orders still awaiting receipt or billing%s. The header "
+            "totals cover every one of the %d open orders, not just the %d listed, so "
+            "quote them rather than adding the rows up. 'Still to be received' is the "
+            "order value weighted by the share not yet received."
+            % (" and at least %d days old" % dias_minimos if dias_minimos else "",
+               len(rows), min(len(rows), max(1, int(limite or 25)))))
+    if not rows:
+        note = ("No submitted purchase order is open%s. This is a complete check."
+                % (" and at least %d days old" % dias_minimos if dias_minimos else ""))
+
+    return ToolResult(
+        columns=[text("name", "Order"), text("supplier", "Supplier"),
+                 text("status", "Status"), text("date", "Dated"),
+                 integer("dias", "Days old"), currency("value", "Order value"),
+                 number("recebido_pct", "% received"), currency("a_receber", "Still to receive")],
+        rows=rows[: max(1, int(limite or 25))],
+        source=describe("Purchase Order (submitted, open)", company,
+                        extra={"supplier": supplier,
+                               "older than": "%d days" % dias_minimos if dias_minimos else None}),
+        header=header,
+        note=note,
     )

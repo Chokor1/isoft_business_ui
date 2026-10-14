@@ -30,13 +30,18 @@ def _company_warehouses(company):
         "Quantity and value in stock per item and warehouse, right now. Returns a PARTIAL "
         "list of the highest-value lines. Use for 'stock of item X', 'what is in the "
         "warehouse', 'stock do artigo', 'o que temos em armazem'. For a total, use "
-        "stock_valor_total instead."
+        "stock_valor_total instead. Set apenas_negativo for the negative-stock exception "
+        "report - 'do I have negative stock', 'stock negativo' - which the value-ranked "
+        "page cannot answer, because a negative line is never among the highest-value ones."
     ),
     params={
         "item_code": Param.text("Exact item code. Use procurar_artigo first if you only know the name.", optional=True),
         "warehouse": Param.text("Restrict to one warehouse.", optional=True),
         "item_group": Param.text("Restrict to one item group.", optional=True),
         "apenas_com_stock": Param.boolean("If true (the default), hide items with zero quantity.", optional=True),
+        "apenas_negativo": Param.boolean(
+            "If true, return ONLY lines whose quantity on hand is below zero, worst first, "
+            "with a complete count. Use this for any negative-stock question.", optional=True),
         "limite": Param.integer("Maximum rows. Default 50.", optional=True),
         "company": Param.text("Company.", optional=True),
     },
@@ -44,7 +49,7 @@ def _company_warehouses(company):
     group="stock",
 )
 def stock_actual(item_code=None, warehouse=None, item_group=None, apenas_com_stock=True,
-                 limite=50, company=None):
+                 apenas_negativo=False, limite=50, company=None):
     company = resolve_company(company)
 
     if warehouse:
@@ -63,7 +68,9 @@ def stock_actual(item_code=None, warehouse=None, item_group=None, apenas_com_sto
     filters = {"warehouse": ["in", warehouses]}
     if item_code:
         filters["item_code"] = item_code
-    if apenas_com_stock:
+    if apenas_negativo:
+        filters["actual_qty"] = ["<", 0]
+    elif apenas_com_stock:
         filters["actual_qty"] = ["!=", 0]
     if item_group:
         filters["`tabItem`.item_group"] = item_group
@@ -74,13 +81,26 @@ def stock_actual(item_code=None, warehouse=None, item_group=None, apenas_com_sto
         fields=["item_code", "warehouse", "actual_qty", "reserved_qty",
                 "projected_qty", "valuation_rate", "stock_value"],
         filters=filters,
-        order_by="stock_value desc",
+        # Ranking by value would bury the negatives: a short line is worth
+        # little and would never reach a page of the highest-value rows.
+        order_by="actual_qty asc" if apenas_negativo else "stock_value desc",
         limit=limite or 50,
         extra_doctypes=extra,
     )
 
     note = None
-    if len(rows) >= (limite or 50):
+    if apenas_negativo:
+        found = fetch("Bin", fields=["count(name) as n", "sum(actual_qty) as qty"],
+                      filters=filters, extra_doctypes=extra)
+        found = found[0] if found else {}
+        n = int(found.get("n") or 0)
+        note = ("Negative-stock exception report over every warehouse in this company. "
+                "%d item/warehouse lines are below zero, %s units short in total%s."
+                % (n, round(flt(found.get("qty")), 4),
+                   "" if n <= len(rows) else "; the %d worst are listed" % len(rows))
+                ) if n else ("No item/warehouse line in this company is below zero. "
+                             "This is a complete check, not a capped page.")
+    elif len(rows) >= (limite or 50):
         note = ("Partial list: only the %d highest-value rows are shown. "
                 "For the total inventory value use the stock_valor_total tool; "
                 "do not add up these rows." % len(rows))

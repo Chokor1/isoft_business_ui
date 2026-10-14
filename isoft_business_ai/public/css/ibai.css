@@ -495,10 +495,10 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
   color: var(--ibai-text);
   border-radius: var(--ibai-r); border-bottom-right-radius: var(--ibai-1);
   padding: 9px var(--ibai-3); max-width: 86%;
-  font-size: 14px; line-height: 1.6; overflow-wrap: anywhere;
+  font-size: 14px; line-height: 1.6; overflow-wrap: break-word;
 }
 .ibai-turn-bot { position: relative; }
-.ibai-answer { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.ibai-answer { font-size: 15px; line-height: 1.6; overflow-wrap: break-word; }
 .ibai-answer strong { font-weight: 600; }
 .ibai-when { font-size: 10.5px; color: var(--ibai-text-3); margin-top: var(--ibai-2); }
 .ibai-turn-user .ibai-when { text-align: right; }
@@ -567,7 +567,7 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
   border-radius: var(--ibai-r-sm); padding: var(--ibai-3);
 }
 .ibai-doc-header dt { color: var(--ibai-text-2); white-space: nowrap; }
-.ibai-doc-header dd { margin: 0; font-weight: 500; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ibai-doc-header dd { margin: 0; font-weight: 500; min-width: 0; overflow-wrap: break-word; font-variant-numeric: tabular-nums; }
 
 .ibai-table-wrap {
   overflow-x: auto; overflow-y: auto; max-height: 340px;
@@ -801,6 +801,16 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 }
 .ibai-typeahead-row:hover,
 .ibai-typeahead-row.active { background: var(--ibai-accent-soft); }
+/* "Supplier@" offered while a bare word is being typed: the same row shape,
+   with the hint that something is still expected after it. */
+.ibai-typeahead-row.is-doctype {
+  display: flex; align-items: baseline; gap: var(--ibai-2);
+}
+.ibai-typeahead-nm { font-weight: 600; }
+.ibai-typeahead-hint {
+  color: var(--ibai-text-3); font-size: 11px; margin-left: auto;
+  flex: 0 0 auto; white-space: nowrap;
+}
 /* Both popovers line up with the composer field, which is centred at 820px,
    not with the full width of the main column. */
 .ibai-console .ibai-typeahead,
@@ -814,6 +824,11 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 }
 .ibai-mention-row + .ibai-mention-row { border-top: 1px solid var(--ibai-line-soft); }
 .ibai-mention-row:hover, .ibai-mention-row.active { background: var(--ibai-surface-4); }
+/* A scope that matched nothing says so, rather than closing the menu and
+   looking as though the @ had stopped working. */
+.ibai-mention-row.is-empty { cursor: default; color: var(--ibai-text-3); font-style: italic; }
+.ibai-mention-row.is-empty:hover { background: transparent; }
+.ibai-mention-row.is-empty .ibai-mention-nm { font-weight: 400; }
 .ibai-mention-dt { color: var(--ibai-text-3); font-size: 10.5px; white-space: nowrap; }
 .ibai-mention-nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ibai-mention-lb { color: var(--ibai-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1145,7 +1160,7 @@ a.ibai-ico { text-decoration: none !important; }
   font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
   color: var(--text-muted, #6b7a8c); margin-bottom: 3px;
 }
-.ibu-turn .body { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.ibu-turn .body { font-size: 13px; line-height: 1.55; overflow-wrap: break-word; }
 .ibu-turn .tools, .ibu-turn .cost {
   font-size: 11px; color: var(--text-muted, #6b7a8c); margin-top: 5px;
   font-family: var(--ibai-mono);

@@ -247,6 +247,15 @@ def search_doctypes(query=None, limit=8):
 
 
 @frappe.whitelist()
+def mention_catalogue():
+    """Every document type that can be mentioned, for matching in the browser."""
+    _check_access()
+    from isoft_business_ai.ai import documents
+
+    return documents.mention_catalogue()
+
+
+@frappe.whitelist()
 def describe_document(doctype, name):
     """Header summary for the chip the widget shows for the open document."""
     _check_access()

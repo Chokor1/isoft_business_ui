@@ -101,3 +101,23 @@ def build_aging(doctype, party_field, party_name_field, company, as_on,
     grand["parties"] = len(ordered)
     grand["listed"] = len(listed)
     return listed, grand
+
+
+def aging_note(grand, party_noun, apenas_vencido=False):
+    """The sentence that stops the model adding the buckets up itself.
+
+    Every bucket figure here is an uncapped aggregate over all matching
+    invoices, so it stays right however few parties the table lists. Without
+    it the model totals the bucket columns of a 50-row page and reports them as
+    the aging of a ledger with hundreds of open invoices - which it did on a
+    live site, putting a six-figure balance in the wrong bucket.
+    """
+    buckets = [b for b in BUCKETS if not (apenas_vencido and b[0] == "nao_vencido")]
+    parts = ", ".join("%s %s" % (label, round(flt(grand.get(key)), 2))
+                      for key, label in buckets)
+    return ("Grand total across all %d %s with a balance: %s (%d invoices). "
+            "Aging over every matching invoice, not just the listed ones: %s. "
+            "Quote these bucket figures as they are - do not add the table's "
+            "bucket columns up yourself. The table lists the %d largest."
+            % (grand["parties"], party_noun, round(flt(grand["total"]), 2),
+               grand["facturas"], parts, grand["listed"]))

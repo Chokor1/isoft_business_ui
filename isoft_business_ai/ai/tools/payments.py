@@ -92,7 +92,8 @@ def recebimentos_pagamentos(from_date, to_date, direccao="recebimentos", party=N
                   "label": "%s  %s" % (r["name"], r.get("party_name") or "")}
                  for r in rows[:10]]
 
-    note = total_note(total, documents, parties, "payments", "parties")
+    note = total_note(total, documents, parties, "payments", "parties",
+                      rows=rows, value_key="total")
     if not documents:
         note = ("Nothing was %s between %s and %s. This is an empty result, not a missing "
                 "report: no submitted Payment Entry matches." % (phrase, from_date, to_date))

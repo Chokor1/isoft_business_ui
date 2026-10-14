@@ -10,7 +10,9 @@ import frappe
 from frappe.utils import flt
 
 from isoft_business_ai.ai.formatting import currency, integer, number, text
-from isoft_business_ai.ai.query import date_range, describe, fetch, grand_total, grouped_total, submitted, total_note
+from isoft_business_ai.ai.query import (date_range, describe, fetch, fetch_reference,
+                                       grand_total, grouped_total, page_share, submitted,
+                                       total_note)
 from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 from isoft_business_ai.ai.security import resolve_company
 
@@ -221,7 +223,8 @@ def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
     # The listed rows are a capped page; this total is not.
     _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total",
                                  group_field="customer")
-    _note = total_note(_total, _n, _g, "sales invoices", "customers")
+    _note = total_note(_total, _n, _g, "sales invoices", "customers",
+                       rows=rows, value_key="total")
     return ToolResult(
         columns=[
             text("customer", "Customer"),
@@ -240,14 +243,20 @@ def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
 @ai_tool(
     name="vendas_por_artigo",
     description=(
-        "Ranking of items/products by value or quantity sold in a period. Use for "
-        "'best selling products', 'what do we sell most', 'produtos mais vendidos'."
+        "Ranking of items/products by value or quantity sold in a period, optionally for "
+        "ONE customer. The customer filter is the only way to break a customer's purchases "
+        "down to item level - use it for 'what did this customer buy', 'what does X order "
+        "from us', 'o que este cliente comprou'. Also use for 'best selling products', "
+        "'what do we sell most', 'produtos mais vendidos'."
     ),
     params={
         "from_date": Param.date("Start date."),
         "to_date": Param.date("End date."),
         "limite": Param.integer("How many items to return. Default 20.", optional=True),
         "item_group": Param.text("Filter by item group.", optional=True),
+        "customer": Param.text(
+            "Restrict to ONE customer (exact customer code). Call procurar_cliente first "
+            "if you only know the name.", optional=True),
         "ordenar_por": Param.enum(
             "Sort order. 'valor' and 'quantidade' are largest first (best sellers); "
             "'valor_asc' and 'quantidade_asc' are smallest first - use those for 'worst "
@@ -259,13 +268,15 @@ def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
     doctypes=["Sales Invoice", "Sales Invoice Item"],
     group="vendas",
 )
-def vendas_por_artigo(from_date, to_date, limite=20, item_group=None,
+def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=None,
                       ordenar_por="valor", company=None):
     company = resolve_company(company)
     filters = submitted({"company": company})
     filters.update(date_range("posting_date", from_date, to_date))
     if item_group:
         filters["`tabSales Invoice Item`.item_group"] = item_group
+    if customer:
+        filters["customer"] = customer
 
     order = {
         "valor": "valor desc",
@@ -302,8 +313,8 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None,
         value_key="valor",
         extra_doctypes=["Sales Invoice Item"])
     _note = ("Grand total over everything these filters match: %s net across %d items. "
-             "The table is a capped page of that set - do not add its rows up yourself."
-             % (round(_total, 2), _g))
+             "The table is a capped page of that set - do not add its rows up yourself. %s"
+             % (round(_total, 2), _g, page_share(rows, "valor", _total)))
     if not _complete:
         _note += (" More items matched than this total could read, so it is a floor, "
                   "not the full figure.")
@@ -317,7 +328,8 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None,
         ],
         rows=rows,
         source=describe("Sales Invoice Item (submitted invoices)", company, from_date, to_date,
-                        {"item group": item_group, "ordered by": ordenar_por}),
+                        {"item group": item_group, "customer": customer,
+                         "ordered by": ordenar_por}),
         filters_applied=filters,
         note=_note,
     )
@@ -396,7 +408,8 @@ def facturas_de_venda(from_date, to_date, customer=None, estado=None,
     # The listed rows are a capped page; this total is not.
     _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total",
                                  group_field="customer")
-    _note = total_note(_total, _n, _g, "sales invoices", "customers")
+    _note = total_note(_total, _n, _g, "sales invoices", "customers",
+                       rows=rows, value_key="total")
     # Say what the order is, so a date-ordered page is never read as a ranking.
     _note += {
         "valor": " Sorted by value, largest first, so these ARE the largest invoices.",
@@ -423,4 +436,96 @@ def facturas_de_venda(from_date, to_date, customer=None, estado=None,
                         {"customer": customer, "status": estado}),
         filters_applied=dict(filters, ordenar_por=ordenar_por),
         note=_note,
+    )
+
+
+@ai_tool(
+    name="clientes_inactivos",
+    description=(
+        "Customers who bought in one period and nothing at all in a later one: lapsed or "
+        "lost customers. Use for 'who stopped buying', 'customers we lost', 'who bought "
+        "last year but not this year', 'clientes que deixaram de comprar', 'clientes "
+        "inactivos'. Do NOT try to answer this by comparing two ranked sales lists - "
+        "neither list is complete and the comparison cannot be done by reading them."
+    ),
+    params={
+        "from_date": Param.date("Start of the period they DID buy in (e.g. last year)."),
+        "to_date": Param.date("End of the period they DID buy in."),
+        "desde": Param.date(
+            "Start of the period they bought NOTHING in - normally the day after to_date."),
+        "ate": Param.date("End of the period they bought nothing in, normally today."),
+        "limite": Param.integer("Maximum customers listed. Default 50.", optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def clientes_inactivos(from_date, to_date, desde, ate, limite=50, company=None):
+    company = resolve_company(company)
+
+    def buyers(start, end):
+        """Every customer with submitted sales in a window, uncapped."""
+        filters = submitted({"company": company})
+        filters.update(date_range("posting_date", start, end))
+        rows = fetch_reference(
+            "Sales Invoice",
+            fields=["customer", "customer_name",
+                    "sum(base_grand_total) as total", "count(name) as facturas",
+                    "max(posting_date) as ultima"],
+            filters=filters,
+            group_by="customer",
+            order_by="total desc")
+        return {r["customer"]: r for r in rows}
+
+    before = buyers(from_date, to_date)
+    after = buyers(desde, ate)
+
+    # The set difference is done here, on two complete lists. Reading it off two
+    # capped ranked pages is what makes this question unanswerable otherwise.
+    lapsed = [r for code, r in before.items() if code not in after]
+    lapsed.sort(key=lambda r: -flt(r.get("total")))
+    lost_value = sum(flt(r.get("total")) for r in lapsed)
+
+    rows = [{
+        "customer": r["customer"],
+        "customer_name": r.get("customer_name"),
+        "total": flt(r.get("total")),
+        "facturas": int(r.get("facturas") or 0),
+        "ultima": r.get("ultima"),
+    } for r in lapsed[: max(1, int(limite or 50))]]
+
+    header = {
+        "Bought in": "%s to %s" % (from_date, to_date),
+        "Bought nothing in": "%s to %s" % (desde, ate),
+        "Customers in the first period": len(before),
+        "Still buying": len(before) - len(lapsed),
+        "Stopped buying": len(lapsed),
+        "Their value in the first period": round(lost_value, 2),
+    }
+    note = ("%d of the %d customers who bought between %s and %s have no submitted sales "
+            "invoice at all between %s and %s. They were worth %s in the first period. "
+            "Both customer lists were read in full, so these counts are complete; the "
+            "table lists the %d largest."
+            % (len(lapsed), len(before), from_date, to_date, desde, ate,
+               round(lost_value, 2), len(rows)))
+    if not lapsed:
+        note = ("Every one of the %d customers who bought between %s and %s has bought "
+                "again between %s and %s. Nobody lapsed."
+                % (len(before), from_date, to_date, desde, ate))
+
+    return ToolResult(
+        columns=[
+            text("customer", "Code"),
+            text("customer_name", "Customer"),
+            currency("total", "Value in the first period"),
+            integer("facturas", "Invoices then"),
+            text("ultima", "Last invoice"),
+        ],
+        rows=rows,
+        source=describe("Sales Invoice (submitted)", company, from_date, to_date,
+                        {"compared against": "%s to %s" % (desde, ate)}),
+        filters_applied={"company": company, "from_date": from_date, "to_date": to_date,
+                         "desde": desde, "ate": ate},
+        header=header,
+        note=note,
     )
