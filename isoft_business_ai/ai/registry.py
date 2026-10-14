@@ -30,7 +30,12 @@ class ToolResult(object):
     """
 
     def __init__(self, columns, rows, source, filters_applied=None, note=None,
-                 header=None, links=None, aux=False, media=None):
+                 header=None, links=None, aux=False, media=None, model_note=None):
+        # ``model_note`` is instruction for the model and nothing else. ``note``
+        # is printed under the result, so putting "never add these to an ERP
+        # total" in it showed the model's own rulebook to the reader as if it
+        # were part of the answer.
+        self.model_note = model_note
         # ``media`` carries pictures and files that belong to a document:
         # [{kind, name, url}]. The browser shows them; the model is told only
         # that they exist and what they are called. URLs stay out of its
@@ -97,6 +102,8 @@ class ToolResult(object):
             payload["header"] = self.header
         if self.note:
             payload["note"] = self.note
+        if self.model_note:
+            payload["note_to_model"] = self.model_note
         if self.media:
             payload["media"] = [{"kind": m.get("kind"), "name": m.get("name")}
                                 for m in self.media]

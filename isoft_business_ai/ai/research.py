@@ -215,7 +215,7 @@ def search(question, kind="geral", place=None, want_image=False):
                                  "Report that the web had no answer; do not answer "
                                  "from memory.")}
 
-    images = _images_for(sources) if want_image else []
+    images = _images_for(sources, hint=question) if want_image else []
     return {"summary": summary, "sources": sources[:MAX_SOURCES],
             "images": images, "searched": searched, "empty_reason": None}
 
@@ -251,35 +251,80 @@ IMG_W = re.compile(r'\swidth=["\']?(\d{2,4})', re.I)
 # it passed every check and rendered as an empty box in the chat.
 JUNK_IMAGE = re.compile(
     r'(sprite|placeholder|spacer|blank|transparent|logo|icon|favicon|avatar|'
-    r'banner|flag|pixel|loading|thumb(nail)?[-_]?(small|xs)|1x1|/ads?/)', re.I)
+    r'banner|flag|pixel|loading|thumb(nail)?[-_]?(small|xs)|1x1|/ads?/|'
+    # Navigation artwork. A site menu is full of real product photography of
+    # other products: "laptop bag" matched /digitnav/menu/laptops-for-home.
+    r'/menus?/|/nav(igation)?/|digitnav|/header/|/footer/|/megamenu)', re.I)
+
+
+IMG_ALT = re.compile(r'\salt=["\']([^"\']*)["\']', re.I)
+
+
+# Words that appear in almost every image path, so matching on them matches
+# nothing in particular: "product" would accept any file under /products/.
+GENERIC = {
+    "image", "images", "photo", "photos", "picture", "pictures", "product",
+    "products", "produto", "produtos", "item", "items", "media", "asset",
+    "assets", "content", "upload", "uploads", "files", "static", "large",
+    "small", "thumb", "thumbs", "main", "default", "original", "full", "http",
+    "https", "www", "com", "shop", "store", "cache", "data", "view", "detail",
+    "details", "page", "html", "index",
+}
+
+
+def _tokens(text):
+    """The distinctive words of a question: part numbers and real names.
+
+    A part number is the strongest signal that a page's picture is the right
+    one, so anything containing a digit counts however short it is.
+    """
+    out = set()
+    for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-]{2,}", text or ""):
+        low = word.lower()
+        if low in GENERIC:
+            continue
+        if len(low) >= 4 or any(ch.isdigit() for ch in low):
+            out.add(low)
+    return out
 
 
 def _candidates(html):
-    """Every picture a page offers for itself, best first."""
+    """Every picture a page offers for itself, best first.
+
+    Each is marked by where it came from. A picture the page nominates for
+    itself - og:image, JSON-LD, image_src - describes the page. One scraped out
+    of the body does not: HP's product page carries two dozen navigation
+    thumbnails and no product image at all in its HTML, so trusting the body
+    would have answered "show me this ink cartridge" with a photo of a laptop.
+    """
     out = []
     for pattern in (OG_IMAGE, OG_IMAGE_REVERSED, LINK_IMAGE, LD_IMAGE):
         for m in pattern.finditer(html):
-            out.append(m.group(1).strip())
+            out.append({"url": m.group(1).strip(), "alt": "", "nominated": True})
     widest = []
     for tag in IMG_TAG.findall(html)[:400]:
         src = IMG_SRC.search(tag)
         if not src:
             continue
         width = IMG_W.search(tag)
-        widest.append((int(width.group(1)) if width else 0, src.group(1).strip()))
+        alt = IMG_ALT.search(tag)
+        widest.append((int(width.group(1)) if width else 0, src.group(1).strip(),
+                       alt.group(1) if alt else ""))
     widest.sort(key=lambda w: -w[0])
-    out.extend(url for width, url in widest[:12] if width >= 150)
+    out.extend({"url": url, "alt": alt, "nominated": False}
+               for width, url, alt in widest[:20])
 
     seen, clean = set(), []
-    for url in out:
+    for c in out:
         # JSON-LD is JSON inside HTML, so its URLs arrive with the slashes
         # escaped: "https:\/\/example.com\/a.jpg".
-        url = url.replace("&amp;", "&").replace("\\/", "/")
+        url = c["url"].replace("&amp;", "&").replace("\\/", "/")
         if not url or url.startswith("data:") or url in seen or JUNK_IMAGE.search(url):
             continue
         seen.add(url)
-        clean.append(url)
-    return clean[:8]
+        c["url"] = url
+        clean.append(c)
+    return clean[:14]
 
 
 def _is_public_host(host):
@@ -390,7 +435,7 @@ def _dimensions(body):
     return None
 
 
-def _images_for(sources):
+def _images_for(sources, hint=""):
     """The picture each of the first few sources advertises for itself.
 
     Taken from the page's own og:image rather than from an image search: it is
@@ -409,8 +454,21 @@ def _images_for(sources):
             html = body.decode("utf-8", "ignore")
         except Exception:
             continue
-        for raw in _candidates(html):
-            candidate = urljoin(source["url"], raw)
+        wanted = _tokens(hint)
+        for c in _candidates(html):
+            # A scraped picture has to look like the thing that was asked for;
+            # one the page nominates for itself is taken as describing it.
+            if not c["nominated"]:
+                # Path and alt text only. The host carries the brand, so
+                # matching the whole URL let any file on logitech.com pass as
+                # "Logitech" - which is how a photo of a smartdock came back
+                # as the M185 mouse.
+                parsed = urlparse(c["url"])
+                haystack = (parsed.path + " " + (parsed.query or "") + " "
+                            + c["alt"]).lower()
+                if not any(tok in haystack for tok in wanted):
+                    continue
+            candidate = urljoin(source["url"], c["url"])
             # Confirmed to be a real image before it is shown, so the answer
             # never promises a picture that turns out to be a 404 or a page.
             ctype, body = _fetch(candidate, want_image=True)
