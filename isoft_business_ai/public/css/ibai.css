@@ -206,20 +206,24 @@
 .ibai-galaxy-star { fill: #fff; opacity: .7; }
 /* The arms turn, the core and the stars do not - which is what a galaxy does,
    and it keeps the mark legible instead of making the whole badge spin.
-   28 seconds is slow enough to read as drift rather than as a spinner, which
-   would suggest the assistant is busy when it is idle. */
+
+   8 seconds, not the 28 this started at. The slow version measured perfectly
+   smooth - uniform 0.21 degrees a frame, no dropped frames - and still looked
+   like it was stopping and starting, because 0.21 degrees on a 34px mark moves
+   its outer edge six hundredths of a pixel: below the point where the eye
+   reads it as movement at all, so it registers as a series of small jumps. */
 @keyframes ibai-orbit {
   from { transform: rotate(-20deg); }
   to { transform: rotate(340deg); }
 }
 .ibai-galaxy-disc {
   transform: rotate(-20deg); transform-origin: 24px 24px;
-  animation: ibai-orbit 28s linear infinite;
+  animation: ibai-orbit 8s linear infinite;
 }
 /* Hovering the launcher winds it up rather than tilting it: a transition on
    transform and an animation on transform are the same property, and the
    animation wins. */
-.ibai-launcher:hover .ibai-galaxy-disc { animation-duration: 8s; }
+.ibai-launcher:hover .ibai-galaxy-disc { animation-duration: 5s; }
 /* The open panel carries its own close button in the header, and the launcher
    would sit exactly on top of the send button. So it steps aside. */
 .ibai-launcher.is-open { opacity: 0; visibility: hidden; }
