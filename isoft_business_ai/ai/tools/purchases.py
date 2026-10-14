@@ -1,10 +1,12 @@
 """Purchasing tools."""
 
 import frappe
+from frappe.utils import flt
 
 from isoft_business_ai.ai.formatting import currency, integer, number, text
-from isoft_business_ai.ai.query import (date_range, describe, fetch, grand_total,
-                                        grouped_total, page_share, submitted, total_note)
+from isoft_business_ai.ai.query import (date_range, describe, fetch, fetch_reference,
+                                        grand_total, grouped_total, page_share,
+                                        submitted, total_note)
 from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 from isoft_business_ai.ai.security import resolve_company
 
