@@ -77,7 +77,7 @@ def stock_ledger(from_date, to_date, item_code=None, warehouse=None, limite=200,
         header={"Movements": len(rows), "Units in": round(moved_in, 2),
                 "Units out": round(moved_out, 2),
                 "Net": round(moved_in + moved_out, 2)},
-        note=("'Balance after' is the running quantity ERPNext stored at that moment. "
+        note=("'Balance after' is the running quantity ISOFT ERP stored at that moment. "
               "A reconciliation posts a zero movement while changing the balance."),
     )
 

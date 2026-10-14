@@ -8,7 +8,7 @@ version = "0.0.1"
 setup(
     name="isoft_business_ai",
     version=version,
-    description="Conversational business intelligence for ERPNext, backed by verified query tools",
+    description="Conversational business intelligence for ISOFT ERP, backed by verified query tools",
     author="ISOFT",
     author_email="ai.accounts@isoft.co.ao",
     packages=find_packages(),

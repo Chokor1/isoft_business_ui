@@ -25,7 +25,7 @@ from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
         "this to 2,000,000', 'what would the prices need to be for 42 million'. Returns "
         "the exact change per line and flags anything below cost. "
         "CALCULATES ONLY: it never creates, modifies or saves any document. If the user "
-        "asks you to save or apply it, say that the change has to be made in ERPNext."
+        "asks you to save or apply it, say that the change has to be made in ISOFT ERP."
     ),
     params={
         "quotation": Param.text("The quotation's exact name/id."),
@@ -76,7 +76,7 @@ def quotation_to_target(quotation, target_total, strategy="net_total_discount"):
             "below_cost": "YES" if line["below_cost"] else "",
         })
 
-    notes = ["Nothing was changed: apply this in ERPNext if you want it."]
+    notes = ["Nothing was changed: apply this in ISOFT ERP if you want it."]
     if abs(residual) > 0.01:
         notes.append(
             "Cannot land exactly: off by %s, because line rates round to the field's "

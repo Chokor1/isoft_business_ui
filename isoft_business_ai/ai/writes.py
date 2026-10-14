@@ -101,7 +101,7 @@ def save_draft(doc):
     if not WRITES_ENABLED:
         frappe.throw(
             "The assistant does not create or change documents. Create the %s in "
-            "ERPNext, or in the application that owns that step."
+            "ISOFT ERP, or in the application that owns that step."
             % doc.doctype,
             frappe.PermissionError,
         )

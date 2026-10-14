@@ -82,7 +82,7 @@ TERMS = [
     },
     {
         "term": "Stock value",
-        "means": "The valuation ERPNext holds per item and warehouse, right now.",
+        "means": "The valuation ISOFT ERP holds per item and warehouse, right now.",
         "calculation": "sum(Bin.stock_value) over the company's non-group warehouses",
         "tool": "stock_valor_total, stock_actual, stock_risco",
         "careful": (

@@ -1,6 +1,6 @@
 ## Isoft Business AI
 
-Conversational business intelligence for ERPNext.
+Conversational business intelligence for ISOFT ERP.
 
 Users ask a question in plain language (Portuguese or English). The assistant
 picks from a catalogue of **verified query tools** — hand-written, permission-aware

@@ -14,7 +14,7 @@ def after_install():
 DESCRIPTION = (
     "Can use the ISOFT business assistant: ask questions, read its answers and "
     "its history. The assistant reads data only, always within this user's own "
-    "ERPNext permissions, and creates or changes nothing. Managing its settings "
+    "ISOFT ERP permissions, and creates or changes nothing. Managing its settings "
     "and seeing everyone's usage is System Manager, not this role."
 )
 
