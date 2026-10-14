@@ -1,0 +1,812 @@
+// Shared rendering for the assistant's two surfaces — the quick panel and the
+// full workspace. Loaded via app_include_js so both have it before any page
+// script runs, and so a table, a figure or a document link looks identical
+// wherever it appears.
+
+frappe.provide('isoft_business_ai');
+
+const IBAI = isoft_business_ai;
+
+/* ------------------------------------------------------------------ basics */
+
+IBAI.esc = function (value) {
+	return frappe.utils.escape_html(String(value == null ? '' : value));
+};
+
+IBAI.icon = function (path, size) {
+	return '<svg viewBox="0 0 24 24" width="' + (size || 14) + '" height="' + (size || 14) +
+		'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+		'stroke-linejoin="round">' + path + '</svg>';
+};
+
+/* ------------------------------------------------------------- capabilities */
+
+/**
+ * The product mark: a barred spiral seen edge-on-ish. Drawn rather than shipped
+ * as an asset so it inherits the theme tokens, and every instance gets its own
+ * gradient ids because SVG gradient ids are document-global.
+ */
+IBAI._gid = 0;
+IBAI.galaxy = function (size) {
+	const id = 'ibg' + (++IBAI._gid);
+	// The arms start at the core's edge, not beyond it: start them any further
+	// out and at launcher size (52px) they read as two detached commas.
+	return '' +
+		'<svg class="ibai-galaxy" viewBox="0 0 48 48" width="' + size + '" height="' + size + '" ' +
+			'fill="none" aria-hidden="true" focusable="false">' +
+		'<defs>' +
+			'<radialGradient id="' + id + 'c" cx="50%" cy="50%" r="50%">' +
+				'<stop class="g0" offset="0%"/>' +
+				'<stop class="g1" offset="38%"/>' +
+				'<stop class="g2" offset="100%"/>' +
+			'</radialGradient>' +
+			'<linearGradient id="' + id + 'a" x1="0%" y1="0%" x2="100%" y2="100%">' +
+				'<stop class="a0" offset="0%"/><stop class="a1" offset="100%"/>' +
+			'</linearGradient>' +
+		'</defs>' +
+		'<g class="ibai-galaxy-disc">' +
+			'<ellipse cx="24" cy="24" rx="20" ry="7.4" stroke="url(#' + id + 'a)" ' +
+				'stroke-width="1" opacity=".22"/>' +
+			'<path d="M24.8 20.6c6.2-2.1 13.8.8 14.6 5.8.8 5.2-5.4 9.8-12 8.8" ' +
+				'stroke="url(#' + id + 'a)" stroke-width="2.6" stroke-linecap="round"/>' +
+			'<path d="M23.2 27.4c-6.2 2.1-13.8-.8-14.6-5.8-.8-5.2 5.4-9.8 12-8.8" ' +
+				'stroke="url(#' + id + 'a)" stroke-width="2.6" stroke-linecap="round"/>' +
+		'</g>' +
+		'<circle cx="24" cy="24" r="6.4" fill="url(#' + id + 'c)"/>' +
+		'<circle class="ibai-galaxy-star" cx="40" cy="10" r="1.1"/>' +
+		'<circle class="ibai-galaxy-star" cx="8" cy="38" r=".9"/>' +
+		'<circle class="ibai-galaxy-star" cx="42" cy="39" r=".7"/>' +
+		'<circle class="ibai-galaxy-star" cx="6.5" cy="10.5" r=".7"/>' +
+		'</svg>';
+};
+
+IBAI.flags = function () {
+	return (frappe.boot && frappe.boot.isoft_business_ai) || {};
+};
+IBAI.can_use = function () {
+	const roles = frappe.user_roles ||
+		(frappe.boot && frappe.boot.user && frappe.boot.user.roles) || [];
+	return roles.indexOf('Business AI User') !== -1 || roles.indexOf('System Manager') !== -1;
+};
+IBAI.is_enabled = function () { return !!IBAI.flags().enabled; };
+IBAI.is_configured = function () { return !!IBAI.flags().configured; };
+
+/* ----------------------------------------------------------------- copying */
+
+/**
+ * Copy on a deliberate click. The clipboard API is refused in some app views,
+ * so a rejection falls back to selecting the text for the viewer to copy.
+ */
+IBAI.copy = function (text, $button, $fallbackSource) {
+	const done = () => {
+		if (!$button) return;
+		const was = $button.html();
+		$button.html(IBAI.icon('<path d="M20 6 9 17l-5-5"/>', 12) + '<span>' + __('Copied') + '</span>');
+		setTimeout(() => $button.html(was), 1400);
+	};
+	try {
+		navigator.clipboard.writeText(text).then(done, () => IBAI._select($fallbackSource));
+	} catch (e) {
+		IBAI._select($fallbackSource);
+	}
+};
+
+IBAI._select = function ($source) {
+	if (!$source || !$source.length) return;
+	try {
+		const range = document.createRange();
+		range.selectNodeContents($source[0]);
+		const sel = window.getSelection();
+		sel.removeAllRanges();
+		sel.addRange(range);
+		frappe.show_alert({ message: __('Press Ctrl+C to copy'), indicator: 'blue' });
+	} catch (e) {
+		/* nothing more we can offer */
+	}
+};
+
+/** A result table as tab-separated text, for pasting into a spreadsheet. */
+IBAI.resultToText = function (res) {
+	const cols = res.columns || [];
+	const lines = [cols.map(c => c.label).join('\t')];
+	(res.rows || []).forEach(row => {
+		lines.push(cols.map(c => {
+			const v = row[c.key];
+			return v == null ? '' : String(v);
+		}).join('\t'));
+	});
+	if (res.source) lines.push('', res.source);
+	return lines.join('\n');
+};
+
+/* -------------------------------------------------------------- formatting */
+
+IBAI.format_cell = function (value, col) {
+	if (value === null || value === undefined || value === '') return '';
+	if (col.type === 'currency') return format_currency(value);
+	if (col.type === 'float') return format_number(value, null, 2);
+	if (col.type === 'int') return format_number(value, null, 0);
+	if (col.type === 'percent') return format_number(value, null, 1) + '%';
+	return IBAI.esc(value);
+};
+
+IBAI.is_numeric = function (col) {
+	return ['currency', 'float', 'int', 'percent'].indexOf(col.type) !== -1;
+};
+
+/* ------------------------------------------------------------------ mentions */
+// A document is referenced as @[DocType:Name]. The brackets matter: an ERPNext
+// name can hold both spaces and slashes ("FT FT3726S2554N/999"), so a looser
+// form could not be parsed back.
+
+IBAI.MENTION = /@\[([^:\]]{1,140}):([^\]]{1,200})\]/g;
+
+IBAI.mentionToken = function (doctype, name) {
+	return '@[' + doctype + ':' + name + ']';
+};
+
+IBAI.extractMentions = function (text) {
+	const re = new RegExp(IBAI.MENTION.source, 'g');
+	const out = [];
+	let m;
+	while ((m = re.exec(text || ''))) out.push(m[1] + ':' + m[2]);
+	return out;
+};
+
+/** Mention markup as plain words — titles are rendered as text. */
+IBAI.stripMentions = function (text) {
+	return (text || '').replace(new RegExp(IBAI.MENTION.source, 'g'), '$1 $2').trim();
+};
+
+/** The document the user is looking at right now, from the desk route. */
+IBAI.currentDocument = function () {
+	try {
+		const route = frappe.get_route() || [];
+		if (route[0] === 'Form' && route[1] && route[2]) {
+			return { doctype: route[1], name: decodeURIComponent(route[2]) };
+		}
+	} catch (e) {
+		/* not on a form */
+	}
+	return null;
+};
+
+/* ------------------------------------------------------------ answer markup */
+
+/**
+ * A deliberately small markdown subset: headings, bullets, numbered lists,
+ * inline code, bold, links and mention chips. Everything is escaped first, so
+ * the model cannot inject markup — it can only ask for these shapes.
+ */
+IBAI.format_text = function (text) {
+	const esc = IBAI.esc;
+	const inline = s => esc(s)
+		.replace(/`([^`]+)`/g, (m, c) => '<code>' + c + '</code>')
+		.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+		.replace(new RegExp(IBAI.MENTION.source, 'g'),
+			(m, dt, nm) => '<span class="ibai-mention">' + esc(dt) + ' ' + esc(nm) + '</span>')
+		.replace(/(https?:\/\/[^\s<]+)/g,
+			'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+
+	const out = [];
+	let list = null;            // 'ul' | 'ol' | null
+	const closeList = () => { if (list) { out.push('</' + list + '>'); list = null; } };
+
+	(text || '').split('\n').forEach(raw => {
+		const line = raw.replace(/\s+$/, '');
+		if (!line.trim()) { closeList(); return; }
+
+		const heading = line.match(/^#{1,4}\s+(.*)$/);
+		if (heading) { closeList(); out.push('<h4>' + inline(heading[1]) + '</h4>'); return; }
+
+		const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+		if (bullet) {
+			if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; }
+			out.push('<li>' + inline(bullet[1]) + '</li>');
+			return;
+		}
+		const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+		if (numbered) {
+			if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; }
+			out.push('<li>' + inline(numbered[1]) + '</li>');
+			return;
+		}
+		closeList();
+		out.push('<p>' + inline(line) + '</p>');
+	});
+	closeList();
+	return out.join('');
+};
+
+/* -------------------------------------------------------------------- steps */
+
+/**
+ * What the assistant actually did, reported after the answer arrives. The
+ * backend returns the tools only once the turn is complete, so there is no
+ * honest way to show this while it runs — and inventing it would be worse
+ * than showing nothing.
+ */
+IBAI.render_steps = function (results) {
+	const $wrap = $('<div class="ibai-steps"></div>');
+	(results || []).forEach(r => {
+		const $s = $('<span class="ibai-step"></span>');
+		$(IBAI.icon('<path d="M20 6 9 17l-5-5"/>', 11)).appendTo($s);
+		$('<b></b>').text(r.tool).appendTo($s);
+		const bits = [];
+		if (typeof r.row_count === 'number') {
+			bits.push(r.row_count + ' ' + (r.row_count === 1 ? __('row') : __('rows')));
+		}
+		if (r.elapsed_ms) bits.push(r.elapsed_ms + ' ms');
+		if (bits.length) $('<i></i>').text(bits.join(' · ')).appendTo($s);
+		if (r.source) $s.attr('title', r.source);
+		$wrap.append($s);
+	});
+	return $wrap;
+};
+
+/* -------------------------------------------------------------- composer */
+
+/**
+ * A placeholder that describes the scope reads well on a desktop and gets cut
+ * in half on a phone, so the narrow screen gets a short one instead.
+ */
+IBAI.fitPlaceholder = function ($input, long, short) {
+	const apply = () => $input.attr('placeholder',
+		window.innerWidth < 620 ? short : long);
+	apply();
+	$(window).on('resize.ibaiph', apply);
+};
+
+/* ------------------------------------------------------------------ results */
+
+/**
+ * One tool result: the document header where there is one, the table, its
+ * provenance line, and links to anything worth opening.
+ * opts: { message_name, index, wide }
+ */
+IBAI.render_result = function (res, opts) {
+	opts = opts || {};
+	const esc = IBAI.esc;
+	const columns = res.columns || [];
+	const rows = res.rows || [];
+	const $wrap = $('<div class="ibai-result"></div>');
+	if (opts.wide && columns.length > 5) $wrap.addClass('is-wide');
+	// Enough columns to read as a sheet rather than a list: pin the label
+	// column so the figures scroll under it.
+	if (columns.length >= 5) $wrap.addClass('is-sheet');
+
+	if (res.header && Object.keys(res.header).length) {
+		const $dl = $('<dl class="ibai-doc-header"></dl>');
+		Object.keys(res.header).forEach(k => {
+			$('<dt></dt>').text(__(k)).appendTo($dl);
+			$('<dd></dd>').text(String(res.header[k])).appendTo($dl);
+		});
+		$wrap.append($dl);
+	}
+
+	if (rows.length) {
+		const head = columns.map(c =>
+			'<th class="' + (IBAI.is_numeric(c) ? 'ibai-num' : '') + '">' +
+			esc(__(c.label)) + '</th>').join('');
+		// Text cells carry their own value as a title: a wide table clips them
+		// so the numeric columns stay on screen, and the full text has to stay
+		// reachable without scrolling sideways.
+		const body = rows.map(row => {
+			// A tool may mark a row as a subtotal or a total; the marker is not
+			// a column, so it never reaches format_cell.
+			const mark = row._style === 'total' ? ' class="ibai-r-total"'
+				: row._style === 'subtotal' ? ' class="ibai-r-subtotal"' : '';
+			return '<tr' + mark + '>' + columns.map(c => {
+				const num = IBAI.is_numeric(c);
+				const raw = row[c.key];
+				const neg = num && typeof raw === 'number' && raw < 0;
+				const title = (!num && raw != null && String(raw).trim())
+					? ' title="' + esc(String(raw).trim()) + '"' : '';
+				const cls = (num ? 'ibai-num' : '') + (neg ? ' ibai-neg' : '');
+				return '<td class="' + cls + '"' + title + '>' +
+					IBAI.format_cell(raw, c) + '</td>';
+			}).join('') + '</tr>';
+		}).join('');
+		$wrap.append(
+			'<div class="ibai-table-wrap"><table class="ibai-table">' +
+			'<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>'
+		);
+	}
+
+	const $foot = $('<div class="ibai-source"></div>');
+	const bits = [];
+	if (res.source) bits.push(__('Source') + ': ' + res.source);
+	if (rows.length) bits.push(rows.length + ' ' + __('rows'));
+	if (res.truncated) bits.push(__('result truncated'));
+	$('<span></span>').text(bits.join(' · ')).appendTo($foot);
+
+	if (rows.length) {
+		$foot.append(' · ');
+		const $copy = $('<a class="ibai-export" href="#"></a>').text(__('Copy table'))
+			.on('click', e => {
+				e.preventDefault();
+				IBAI.copy(IBAI.resultToText(res), null, $wrap.find('.ibai-table'));
+			});
+		$foot.append($copy);
+	}
+	if (opts.message_name && rows.length) {
+		$foot.append(' · ');
+		$foot.append($('<a class="ibai-export" href="#"></a>').text(__('Export Excel'))
+			.on('click', e => {
+				e.preventDefault();
+				window.open('/api/method/isoft_business_ai.api.export_result?message=' +
+					encodeURIComponent(opts.message_name) + '&index=' + (opts.index || 0));
+			}));
+	}
+	if (res.note) $('<div class="ibai-note"></div>').text(res.note).appendTo($foot);
+	$wrap.append($foot);
+
+	if ((res.links || []).length) {
+		const $links = $('<div class="ibai-links"></div>');
+		res.links.forEach(l => {
+			if (!l || !l.doctype || !l.name) return;
+			// Routed through the desk router: v13 hijacks /app link clicks
+			// anyway, and set_route keeps the assistant open over the document.
+			const href = '/app/' + frappe.router.slug(l.doctype) + '/' + encodeURIComponent(l.name);
+			$('<a class="ibai-link"></a>')
+				.attr('href', href)
+				.text(l.label || (l.doctype + ' ' + l.name))
+				.on('click', e => {
+					e.preventDefault();
+					frappe.set_route('Form', l.doctype, l.name);
+				})
+				.appendTo($links);
+		});
+		$wrap.append($links);
+	}
+	return $wrap;
+};
+
+/* ----------------------------------------------------------------- history */
+
+/** Relative time as plain text. comment_when() returns a <span> wrapper, which
+ *  is wrong everywhere we set text content. */
+IBAI.when = function (stamp) {
+	try {
+		return frappe.datetime.prettyDate(stamp, true) || '';
+	} catch (e) {
+		return '';
+	}
+};
+
+/** Which history bucket a timestamp belongs in. */
+IBAI.dateGroup = function (stamp) {
+	try {
+		const d = frappe.datetime.str_to_obj(stamp);
+		const a = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+		const n = new Date();
+		const b = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+		const days = Math.round((b - a) / 86400000);
+		if (days <= 0) return __('Today');
+		if (days === 1) return __('Yesterday');
+		if (days <= 7) return __('Previous 7 days');
+		if (days <= 30) return __('Previous 30 days');
+		return __('Older');
+	} catch (e) {
+		return __('Older');
+	}
+};
+
+/* ---------------------------------------------------------------- scrolling */
+
+/**
+ * Keeps the conversation pinned to the bottom only while the reader is already
+ * there, so reading an older answer is never interrupted, and offers a jump
+ * button when they have scrolled away.
+ */
+IBAI.scroller = function ($stream, $jump) {
+	const NEAR = 140;
+	let near = true;
+
+	const atBottom = () => {
+		const el = $stream[0];
+		if (!el) return true;
+		return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR;
+	};
+
+	$stream.on('scroll', () => {
+		near = atBottom();
+		if ($jump) $jump.prop('hidden', near);
+	});
+
+	const api = {
+		isNear: () => near,
+		toBottom(instant) {
+			const el = $stream[0];
+			if (!el) return;
+			near = true;
+			if ($jump) $jump.prop('hidden', true);
+			if (instant) { el.scrollTop = el.scrollHeight; return; }
+			$stream.stop().animate({ scrollTop: el.scrollHeight }, 180);
+		},
+		follow(instant) { if (near) api.toBottom(instant); },
+	};
+	if ($jump) $jump.on('click', () => api.toBottom());
+	return api;
+};
+
+/* -------------------------------------------------------------------- sound */
+// Synthesised rather than loaded: no asset to ship and nothing for the desk
+// bundler to miss. Browsers refuse audio before a gesture, and the first tone
+// only ever follows a click.
+
+IBAI.sound = {
+	_ctx: null,
+	enabled() {
+		try { return localStorage.getItem('ibai_sound') !== 'off'; } catch (e) { return true; }
+	},
+	setEnabled(on) {
+		try { localStorage.setItem('ibai_sound', on ? 'on' : 'off'); } catch (e) { /* ignore */ }
+	},
+	ctx() {
+		if (!this._ctx) {
+			const AC = window.AudioContext || window.webkitAudioContext;
+			if (!AC) return null;
+			this._ctx = new AC();
+		}
+		if (this._ctx.state === 'suspended') this._ctx.resume();
+		return this._ctx;
+	},
+	_play(notes, peak) {
+		if (!this.enabled()) return;
+		let ctx;
+		try { ctx = this.ctx(); } catch (e) { return; }
+		if (!ctx) return;
+		notes.forEach(n => {
+			const osc = ctx.createOscillator();
+			const gain = ctx.createGain();
+			osc.type = 'sine';
+			osc.frequency.value = n[0];
+			const t = ctx.currentTime + n[1];
+			gain.gain.setValueAtTime(0.0001, t);
+			gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+			gain.gain.exponentialRampToValueAtTime(0.0001, t + n[2]);
+			osc.connect(gain);
+			gain.connect(ctx.destination);
+			osc.start(t);
+			osc.stop(t + n[2] + 0.02);
+		});
+	},
+	sent() { this._play([[523.25, 0, 0.08]], 0.04); },
+	received() { this._play([[659.25, 0, 0.1], [880.0, 0.08, 0.14]], 0.05); },
+	error() { this._play([[311.13, 0, 0.13], [233.08, 0.11, 0.18]], 0.05); },
+};
+
+/* ------------------------------------------------------- mention autocomplete */
+
+/**
+ * Wire @ mentions onto a textarea: the open document first, then a search
+ * across the common business document types.
+ */
+IBAI.attachMentions = function ($input, $anchor) {
+	const $menu = $('<div class="ibai-mentions" hidden></div>').appendTo($anchor);
+	let items = [];
+	let active = 0;
+	let token = null;
+	let timer = null;
+
+	function close() {
+		$menu.prop('hidden', true).empty();
+		items = [];
+		token = null;
+	}
+	function insert(item) {
+		const value = $input.val() || '';
+		$input.val(
+			value.slice(0, token.start) + IBAI.mentionToken(item.doctype, item.name) + ' ' +
+			value.slice(token.end)
+		);
+		close();
+		$input.trigger('input').focus();
+	}
+	function draw() {
+		$menu.empty();
+		if (!items.length) { $menu.prop('hidden', true); return; }
+		items.forEach((it, i) => {
+			const $row = $('<div class="ibai-mention-row"></div>').toggleClass('active', i === active);
+			$('<span class="ibai-mention-dt"></span>').text(it.doctype).appendTo($row);
+			$('<span class="ibai-mention-nm"></span>').text(it.name).appendTo($row);
+			if (it.label) $('<span class="ibai-mention-lb"></span>').text(it.label).appendTo($row);
+			if (it.here) $('<span class="ibai-mention-here"></span>').text(__('open now')).appendTo($row);
+			$row.on('mousedown', e => { e.preventDefault(); insert(it); });
+			$menu.append($row);
+		});
+		$menu.prop('hidden', false);
+	}
+	function tokenAtCaret() {
+		const el = $input[0];
+		const upto = (el.value || '').slice(0, el.selectionStart);
+		const at = upto.lastIndexOf('@');
+		if (at === -1) return null;
+		const term = upto.slice(at + 1);
+		if (/[\]\n]/.test(term) || term.length > 60) return null;
+		return { start: at, end: el.selectionStart, term: term };
+	}
+
+	$input.on('input click keyup', e => {
+		if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].indexOf(e.key) !== -1) return;
+		token = tokenAtCaret();
+		if (!token) return close();
+
+		const here = IBAI.currentDocument();
+		const seed = [];
+		if (here && (!token.term ||
+				here.name.toLowerCase().indexOf(token.term.toLowerCase()) !== -1)) {
+			seed.push({ doctype: here.doctype, name: here.name, label: '', here: true });
+		}
+		items = seed.slice();
+		active = 0;
+		draw();
+
+		clearTimeout(timer);
+		const term = token.term;
+		timer = setTimeout(() => {
+			if (!token) return;
+			frappe.call({
+				method: 'isoft_business_ai.api.search_documents',
+				args: { query: term, limit: 8 },
+				callback: r => {
+					if (!token) return;
+					const extra = (r.message || []).filter(x =>
+						!seed.some(s => s.doctype === x.doctype && s.name === x.name));
+					items = seed.concat(extra).slice(0, 9);
+					active = 0;
+					draw();
+				},
+			});
+		}, 220);
+	});
+
+	$input.on('keydown', e => {
+		if ($menu.prop('hidden') || !items.length) return;
+		if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; draw(); }
+		else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; draw(); }
+		else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insert(items[active]); }
+		else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+	});
+	$input.on('blur', () => setTimeout(close, 120));
+	return { close: close, isOpen: () => !$menu.prop('hidden') };
+};
+
+/* --------------------------------------------------------------- suggestions */
+
+/**
+ * The catalogue of questions the assistant can answer, fetched once per page.
+ * Two dozen short strings, so matching happens in the browser rather than a
+ * round trip per keystroke.
+ */
+IBAI._suggestions = null;
+IBAI.setSuggestions = function (list) {
+	if (list && list.length) IBAI._suggestions = list;
+};
+IBAI.loadSuggestions = function (then) {
+	// Normally already filled by the briefing call the opening screen makes.
+	if (IBAI._suggestions) { then(IBAI._suggestions); return; }
+	frappe.call({
+		method: 'isoft_business_ai.api.suggestions',
+		callback: r => { IBAI._suggestions = r.message || []; then(IBAI._suggestions); },
+		error: () => { IBAI._suggestions = []; then([]); },
+	});
+};
+
+/**
+ * The three questions to greet someone with. Spread across groups rather than
+ * taken off the top of the list, and general by design: the opening screen is
+ * the same for everyone who opens it, so it never names a customer.
+ */
+IBAI.openingSuggestions = function (all) {
+	const want = ['vendas', 'tesouraria', 'contabilidade', 'stock', 'compras', 'targets'];
+	const byGroup = {};
+	(all || []).forEach(s => {
+		if (!byGroup[s.group]) byGroup[s.group] = s.text;
+	});
+	const out = [];
+	want.forEach(g => { if (out.length < 3 && byGroup[g]) out.push(byGroup[g]); });
+	(all || []).forEach(s => { if (out.length < 3 && out.indexOf(s.text) === -1) out.push(s.text); });
+	return out;
+};
+
+IBAI.normalise = function (text) {
+	text = (text || '').toLowerCase();
+	try {
+		// Angolan users type with and without accents; both should match.
+		return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+	} catch (e) {
+		return text;
+	}
+};
+
+/** Best matches for what has been typed so far, closest first. */
+IBAI.matchSuggestions = function (query, limit) {
+	const q = IBAI.normalise(query).trim();
+	if (!q) return [];
+	const scored = [];
+	(IBAI._suggestions || []).forEach((s, i) => {
+		const t = IBAI.normalise(s.text);
+		let rank;
+		if (t.indexOf(q) === 0) rank = 0;
+		else if (t.indexOf(' ' + q) > -1) rank = 1;
+		else if (t.indexOf(q) > -1) rank = 2;
+		else return;
+		scored.push({ s, rank, i });
+	});
+	scored.sort((a, b) => a.rank - b.rank || a.i - b.i);
+	return scored.slice(0, limit || 5).map(x => x.s);
+};
+
+/**
+ * Suggest questions as the user types. Deliberately quiet: nothing on an empty
+ * composer (the opening screen already offers a few), nothing while the @
+ * mention menu is up, and no pre-selected row — Enter still sends what you
+ * typed until you arrow into the list.
+ */
+IBAI.typeahead = function ($input, $anchor, onPick) {
+	const $menu = $('<div class="ibai-typeahead" hidden></div>').appendTo($anchor);
+	let items = [];
+	let active = -1;
+
+	function close() { $menu.prop('hidden', true).empty(); items = []; active = -1; }
+
+	function mentionsOpen() {
+		const $m = $anchor.find('.ibai-mentions');
+		return $m.length && !$m.prop('hidden');
+	}
+
+	function draw() {
+		$menu.empty();
+		if (!items.length) { close(); return; }
+		$('<div class="ibai-typeahead-head"></div>').text(__('Suggestions')).appendTo($menu);
+		items.forEach((it, i) => {
+			$('<button type="button" class="ibai-typeahead-row"></button>')
+				.toggleClass('active', i === active)
+				.text(it.text)
+				.on('mousedown', e => { e.preventDefault(); pick(it); })
+				.appendTo($menu);
+		});
+		$menu.prop('hidden', false);
+	}
+
+	function pick(it) {
+		close();
+		onPick(it.text);
+	}
+
+	function refresh() {
+		if (mentionsOpen()) { close(); return; }
+		const value = ($input.val() || '').trim();
+		// Once it is a sentence of their own, stop second-guessing them.
+		if (!value || value.length > 48) { close(); return; }
+		if (!IBAI._suggestions) { IBAI.loadSuggestions(refresh); return; }
+		items = IBAI.matchSuggestions(value, 5);
+		active = -1;
+		draw();
+	}
+
+	$input.on('input', refresh);
+	$input.on('blur', () => setTimeout(close, 120));
+	// stopImmediatePropagation, not stopPropagation: the surface binds its own
+	// Enter-sends handler on this same textarea, and stopPropagation would not
+	// stop a sibling handler on the same element.
+	$input.on('keydown', e => {
+		if ($menu.prop('hidden') || !items.length) return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault(); e.stopImmediatePropagation();
+			active = (active + 1) % items.length; draw();
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault(); e.stopImmediatePropagation();
+			active = (active <= 0 ? items.length : active) - 1; draw();
+		} else if (e.key === 'Enter' && active > -1) {
+			e.preventDefault(); e.stopImmediatePropagation();
+			pick(items[active]);
+		} else if (e.key === 'Escape') {
+			e.preventDefault(); e.stopImmediatePropagation();
+			close();
+		}
+	});
+
+	// No eager fetch: the briefing has almost certainly filled the cache by the
+	// time anyone types, and a miss costs one call on the first keystroke.
+	return { close, refresh };
+};
+
+/* ---------------------------------------------------------------- feedback */
+
+/**
+ * Report an answer as wrong. Recorded against the message with the tools that
+ * ran; it changes nothing on its own, and the dialog says so, because a control
+ * that implies it will retrain something would be a lie.
+ */
+IBAI.reportAnswer = function (messageName, $button) {
+	if (!messageName) return;
+	const d = new frappe.ui.Dialog({
+		title: __('Report this answer'),
+		fields: [
+			{
+				fieldname: 'verdict', fieldtype: 'Select', label: __('What is wrong with it?'),
+				reqd: 1,
+				options: [__('Wrong number'), __('Wrong interpretation'), __('Incomplete'),
+					__('Should not have answered'), __('Unclear'), __('Other')].join('\n'),
+			},
+			{
+				fieldname: 'comment', fieldtype: 'Small Text',
+				label: __('What should it have said?'),
+				description: __('The question, the answer and the queries that ran are saved automatically.'),
+			},
+			{
+				fieldtype: 'HTML',
+				options: '<p style="font-size:12px;color:var(--text-muted,#6b7a8c);margin:0">' +
+					__('This is recorded for someone to investigate. It does not change the assistant on its own.') +
+					'</p>',
+			},
+		],
+		primary_action_label: __('Report'),
+		primary_action: values => {
+			d.hide();
+			frappe.call({
+				method: 'isoft_business_ai.api.flag_answer',
+				args: {
+					message: messageName,
+					verdict: values.verdict,
+					comment: values.comment || null,
+				},
+				callback: r => {
+					if (!r.message || !r.message.ok) return;
+					if ($button) {
+						$button.addClass('is-done').find('span').text(__('Reported'));
+						$button.prop('disabled', true);
+					}
+					frappe.show_alert({ message: __('Reported. Thank you.'), indicator: 'green' }, 4);
+				},
+			});
+		},
+	});
+	d.show();
+};
+
+/* ------------------------------------------------------------ row context menu */
+
+/** A small contextual menu anchored to a button. Closes on any outside click. */
+IBAI.rowMenu = function ($button, entries) {
+	$('.ibai-menu').remove();
+	const $menu = $('<div class="ibai-menu"></div>');
+	entries.forEach(e => {
+		$('<button type="button"></button>')
+			.addClass(e.danger ? 'danger' : '')
+			.text(e.label)
+			.on('click', ev => { ev.stopPropagation(); $menu.remove(); e.run(); })
+			.appendTo($menu);
+	});
+	$menu.appendTo(document.body);
+
+	const r = $button[0].getBoundingClientRect();
+	const h = $menu.outerHeight();
+	$menu.css({
+		top: Math.min(r.bottom + 4, window.innerHeight - h - 8) + 'px',
+		left: Math.max(8, r.right - $menu.outerWidth()) + 'px',
+	});
+	$menu.find('button').first().focus();
+
+	// A fixed-position menu has to go away on any click, any Escape and any
+	// scroll of the list behind it, or it floats detached from its row.
+	const close = () => {
+		$menu.remove();
+		$(document).off('.ibaimenu');
+		$button.closest('.ibai-hlist, .ibai-stream').off('scroll.ibaimenu');
+		$button.focus();
+	};
+	setTimeout(() => {
+		$(document).on('click.ibaimenu', close);
+		$(document).on('keydown.ibaimenu', ev => { if (ev.key === 'Escape') close(); });
+		$button.closest('.ibai-hlist, .ibai-stream').on('scroll.ibaimenu', close);
+	}, 0);
+	$menu.find('button').on('click', () => {
+		$(document).off('.ibaimenu');
+		$button.closest('.ibai-hlist, .ibai-stream').off('scroll.ibaimenu');
+	});
+	return $menu;
+};

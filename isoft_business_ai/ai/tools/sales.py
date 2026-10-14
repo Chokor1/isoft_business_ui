@@ -1,0 +1,426 @@
+"""Sales tools.
+
+Every figure here comes from submitted Sales Invoices in company currency
+(``base_*`` fields), net of credit notes unless the caller says otherwise.
+That default is the accounting-correct one and is stated in the provenance
+line so the user can see which convention produced the number.
+"""
+
+import frappe
+from frappe.utils import flt
+
+from isoft_business_ai.ai.formatting import currency, integer, number, text
+from isoft_business_ai.ai.query import date_range, describe, fetch, grand_total, grouped_total, submitted, total_note
+from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
+from isoft_business_ai.ai.security import resolve_company
+
+# Frappe v13 blacklists CONCAT (and IF/IFNULL/COALESCE) in a field list as an
+# injection guard, and a DATE_FORMAT mask would smuggle a '%' into the query
+# string. So each bucket selects plain numeric parts and the label is assembled
+# in Python below.
+_PERIOD_SPEC = {
+    "dia": {
+        "fields": ["posting_date as d"],
+        "group_by": "posting_date",
+        "order_by": "d asc",
+        "label": lambda r: str(r.get("d")),
+    },
+    "mes": {
+        "fields": ["YEAR(posting_date) as y", "MONTH(posting_date) as m"],
+        "group_by": "YEAR(posting_date), MONTH(posting_date)",
+        "order_by": "y asc, m asc",
+        "label": lambda r: "%04d-%02d" % (int(r.get("y") or 0), int(r.get("m") or 0)),
+    },
+    "trimestre": {
+        "fields": ["YEAR(posting_date) as y", "QUARTER(posting_date) as q"],
+        "group_by": "YEAR(posting_date), QUARTER(posting_date)",
+        "order_by": "y asc, q asc",
+        "label": lambda r: "%04d-T%d" % (int(r.get("y") or 0), int(r.get("q") or 0)),
+    },
+    "ano": {
+        "fields": ["YEAR(posting_date) as y"],
+        "group_by": "YEAR(posting_date)",
+        "order_by": "y asc",
+        "label": lambda r: str(int(r.get("y") or 0)),
+    },
+}
+
+
+def _returns_filter(incluir_devolucoes, filters, apenas_devolucoes=False):
+    if apenas_devolucoes:
+        # Returns only. Their totals are negative, which is what makes "how much
+        # came back, and from whom" readable without further arithmetic.
+        filters["is_return"] = 1
+        return filters
+    if not incluir_devolucoes:
+        filters["is_return"] = 0
+    return filters
+
+
+@ai_tool(
+    name="vendas_total",
+    description=(
+        "Total invoiced sales for a period: total value, invoice count and average ticket. "
+        "Use for 'how much did we sell in July', 'what was last year's revenue', "
+        "'quanto vendemos em Julho', 'qual foi a facturacao'."
+    ),
+    params={
+        "from_date": Param.date("Start date of the period."),
+        "to_date": Param.date("End date of the period."),
+        "company": Param.text("Company. Omitir para usar a empresa por omissao do utilizador.", optional=True),
+        "apenas_devolucoes": Param.boolean(
+            "If true, total ONLY credit notes / returns for the period. Use this for "
+            "'how much was returned'. The value is negative.", optional=True),
+        "incluir_devolucoes": Param.boolean(
+            "If true (the default), subtract credit notes, giving net sales.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def vendas_total(from_date, to_date, company=None, incluir_devolucoes=True,
+                 apenas_devolucoes=False):
+    company = resolve_company(company)
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    filters = _returns_filter(incluir_devolucoes, filters,
+                              apenas_devolucoes=apenas_devolucoes)
+
+    rows = fetch(
+        "Sales Invoice",
+        fields=[
+            "sum(base_grand_total) as total",
+            "sum(base_net_total) as total_sem_impostos",
+            "count(name) as facturas",
+        ],
+        filters=filters,
+    )
+    row = rows[0] if rows else {}
+    total = row.get("total") or 0
+    facturas = row.get("facturas") or 0
+    row["ticket_medio"] = (total / facturas) if facturas else 0
+
+    return ToolResult(
+        columns=[
+            currency("total", "Total invoiced"),
+            currency("total_sem_impostos", "Total excl. tax"),
+            integer("facturas", "Invoices"),
+            currency("ticket_medio", "Average ticket"),
+        ],
+        rows=[row] if row else [],
+        source=describe("Sales Invoice (submitted)", company, from_date, to_date,
+                        {"returns": "included" if incluir_devolucoes else "excluded"}),
+        filters_applied=filters,
+    )
+
+
+@ai_tool(
+    name="vendas_por_periodo",
+    description=(
+        "Sales over time, grouped by day, month, quarter or year. Use for trends and "
+        "period-over-period comparisons. 'sales trend', 'monthly sales', 'evolucao das "
+        "vendas', 'vendas por trimestre'."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "agrupar_por": Param.enum("Granularity of the series.", ["dia", "mes", "trimestre", "ano"]),
+        "company": Param.text("Company.", optional=True),
+        "incluir_devolucoes": Param.boolean("Subtract credit notes. Default true.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def vendas_por_periodo(from_date, to_date, agrupar_por="mes", company=None, incluir_devolucoes=True):
+    company = resolve_company(company)
+    spec = _PERIOD_SPEC.get(agrupar_por)
+    if not spec:
+        frappe.throw("Invalid agrupar_por. Use: dia, mes, trimestre, ano.")
+
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    filters = _returns_filter(incluir_devolucoes, filters)
+
+    raw = fetch(
+        "Sales Invoice",
+        fields=spec["fields"] + ["sum(base_grand_total) as total", "count(name) as facturas"],
+        filters=filters,
+        group_by=spec["group_by"],
+        order_by=spec["order_by"],
+    )
+
+    rows = []
+    for r in raw:
+        rows.append({
+            "periodo": spec["label"](r),
+            "total": r.get("total"),
+            "facturas": r.get("facturas"),
+        })
+
+    # The listed rows are a capped page; this total is not.
+    _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total")
+    _note = total_note(_total, _n, 0, "sales invoices", "")
+
+    return ToolResult(
+        columns=[text("periodo", "Period"), currency("total", "Total"), integer("facturas", "Invoices")],
+        rows=rows,
+        source=describe("Sales Invoice (submitted)", company, from_date, to_date,
+                        {"grouped by": agrupar_por}),
+        filters_applied=filters,
+        note=_note,
+    )
+
+
+@ai_tool(
+    name="vendas_por_cliente",
+    description=(
+        "Ranking of customers by invoiced value in a period. Use for 'best customers', "
+        "'top 10 customers', 'who bought the most', 'melhores clientes', 'quem comprou mais'."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "limite": Param.integer("How many customers to return. Default 20.", optional=True),
+        "customer_group": Param.text("Filter by customer group.", optional=True),
+        "apenas_devolucoes": Param.boolean(
+            "If true, list ONLY credit notes / returns, to see what came back and from "
+            "whom. The values are negative.", optional=True),
+        "ordenar_por": Param.enum(
+            "Sort order. 'valor' is largest first (best customers, the default). "
+            "'valor_asc' is smallest first. 'facturas' and 'facturas_asc' rank by how many "
+            "invoices rather than by value.",
+            ["valor", "valor_asc", "facturas", "facturas_asc"], optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
+                       apenas_devolucoes=False, ordenar_por="valor", company=None):
+    company = resolve_company(company)
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    filters = _returns_filter(True, filters, apenas_devolucoes=apenas_devolucoes)
+    if customer_group:
+        filters["customer_group"] = customer_group
+
+    rows = fetch(
+        "Sales Invoice",
+        fields=[
+            "customer",
+            "customer_name",
+            "sum(base_grand_total) as total",
+            "count(name) as facturas",
+        ],
+        filters=filters,
+        group_by="customer",
+        order_by={"valor": "total desc", "valor_asc": "total asc",
+                  "facturas": "facturas desc",
+                  "facturas_asc": "facturas asc"}.get(ordenar_por or "valor", "total desc"),
+        limit=limite or 20,
+    )
+    # The listed rows are a capped page; this total is not.
+    _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total",
+                                 group_field="customer")
+    _note = total_note(_total, _n, _g, "sales invoices", "customers")
+    return ToolResult(
+        columns=[
+            text("customer", "Customer"),
+            text("customer_name", "Name"),
+            currency("total", "Total invoiced"),
+            integer("facturas", "Invoices"),
+        ],
+        rows=rows,
+        source=describe("Sales Invoice (submitted)", company, from_date, to_date,
+                        {"group": customer_group}),
+        filters_applied=filters,
+        note=_note,
+    )
+
+
+@ai_tool(
+    name="vendas_por_artigo",
+    description=(
+        "Ranking of items/products by value or quantity sold in a period. Use for "
+        "'best selling products', 'what do we sell most', 'produtos mais vendidos'."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "limite": Param.integer("How many items to return. Default 20.", optional=True),
+        "item_group": Param.text("Filter by item group.", optional=True),
+        "ordenar_por": Param.enum(
+            "Sort order. 'valor' and 'quantidade' are largest first (best sellers); "
+            "'valor_asc' and 'quantidade_asc' are smallest first - use those for 'worst "
+            "selling', 'slowest movers', 'what barely sells'. Never read the bottom of a "
+            "descending page as the worst.",
+            ["valor", "quantidade", "valor_asc", "quantidade_asc"], optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice", "Sales Invoice Item"],
+    group="vendas",
+)
+def vendas_por_artigo(from_date, to_date, limite=20, item_group=None,
+                      ordenar_por="valor", company=None):
+    company = resolve_company(company)
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    if item_group:
+        filters["`tabSales Invoice Item`.item_group"] = item_group
+
+    order = {
+        "valor": "valor desc",
+        "quantidade": "quantidade desc",
+        "valor_asc": "valor asc",
+        "quantidade_asc": "quantidade asc",
+    }.get(ordenar_por or "valor", "valor desc")
+    rows = fetch(
+        "Sales Invoice",
+        fields=[
+            "`tabSales Invoice Item`.item_code as item_code",
+            "`tabSales Invoice Item`.item_name as item_name",
+            "sum(`tabSales Invoice Item`.base_net_amount) as valor",
+            "sum(`tabSales Invoice Item`.stock_qty) as quantidade",
+        ],
+        filters=filters,
+        group_by="`tabSales Invoice Item`.item_code",
+        order_by=order,
+        limit=limite or 20,
+        extra_doctypes=["Sales Invoice Item"],
+    )
+    # The listed rows are a capped page; this total is not.
+    # The figure lives on the child table, so the total comes from reading
+    # every item group uncapped rather than from one SUM. The parent's
+    # base_net_total is NOT a substitute: on this site it differs from the sum
+    # of its own lines by 500.00 over 2026, so it would quietly disagree with
+    # the table above it.
+    _total, _g, _complete = grouped_total(
+        "Sales Invoice",
+        fields=["`tabSales Invoice Item`.item_code as item_code",
+                "sum(`tabSales Invoice Item`.base_net_amount) as valor"],
+        filters=filters,
+        group_by="`tabSales Invoice Item`.item_code",
+        value_key="valor",
+        extra_doctypes=["Sales Invoice Item"])
+    _note = ("Grand total over everything these filters match: %s net across %d items. "
+             "The table is a capped page of that set - do not add its rows up yourself."
+             % (round(_total, 2), _g))
+    if not _complete:
+        _note += (" More items matched than this total could read, so it is a floor, "
+                  "not the full figure.")
+
+    return ToolResult(
+        columns=[
+            text("item_code", "Code"),
+            text("item_name", "Item"),
+            currency("valor", "Value sold"),
+            number("quantidade", "Quantity"),
+        ],
+        rows=rows,
+        source=describe("Sales Invoice Item (submitted invoices)", company, from_date, to_date,
+                        {"item group": item_group, "ordered by": ordenar_por}),
+        filters_applied=filters,
+        note=_note,
+    )
+
+
+ORDER_BY = {
+    "data": "posting_date desc, name desc",
+    "data_asc": "posting_date asc, name asc",
+    "valor": "base_grand_total desc",
+    "valor_asc": "base_grand_total asc",
+    "em_divida": "outstanding_amount desc",
+}
+
+
+@ai_tool(
+    name="facturas_de_venda",
+    description=(
+        "Lists individual sales invoices for a period, optionally for one customer or one "
+        "status, sorted by date or by value. Use when the user wants to see the documents "
+        "rather than a total, and set ordenar_por='valor' for any 'biggest', 'largest' or "
+        "'top N invoices by amount' question - the default date order is NOT a ranking. "
+        "'show me the invoices', 'unpaid invoices', 'the 20 largest invoices', "
+        "'mostra as facturas', 'facturas por pagar', 'as maiores facturas'."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "customer": Param.text("Exact customer code. Use procurar_cliente first if you only know the name.", optional=True),
+        "estado": Param.enum("Filter by invoice status.",
+                             ["Paid", "Unpaid", "Overdue", "Return", "Credit Note Issued", "Partly Paid"],
+                             optional=True),
+        "ordenar_por": Param.enum(
+            "Sort order. 'data' is newest first (the default). 'valor' is largest value "
+            "first - use it for 'top N by amount'. 'data_asc' is OLDEST first, for 'the "
+            "oldest invoice'. 'em_divida' is largest unpaid balance first. 'valor_asc' is "
+            "smallest first, for credit notes and returns.",
+            ["data", "data_asc", "valor", "em_divida", "valor_asc"], optional=True),
+        "apenas_em_aberto": Param.boolean(
+            "If true, only invoices that still carry a balance, whatever their status. Use "
+            "this for 'still unpaid' and 'with a balance' - the estado filter matches one "
+            "exact status, so estado='Unpaid' silently excludes everything Overdue.",
+            optional=True),
+        "valor_minimo": Param.number(
+            "Only invoices at or above this value. Useful with ordenar_por='valor'.",
+            optional=True),
+        "limite": Param.integer("Maximum invoices. Default 50.", optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def facturas_de_venda(from_date, to_date, customer=None, estado=None,
+                      ordenar_por="data", valor_minimo=None, apenas_em_aberto=False,
+                      limite=50, company=None):
+    company = resolve_company(company)
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    if customer:
+        filters["customer"] = customer
+    if estado:
+        filters["status"] = estado
+    if valor_minimo is not None:
+        filters["base_grand_total"] = [">=", flt(valor_minimo)]
+    if apenas_em_aberto:
+        filters["outstanding_amount"] = [">", 0]
+
+    order = ORDER_BY.get(ordenar_por or "data", ORDER_BY["data"])
+    rows = fetch(
+        "Sales Invoice",
+        fields=["name", "posting_date", "customer", "customer_name", "base_grand_total",
+                "outstanding_amount", "status", "due_date"],
+        filters=filters,
+        order_by=order,
+        limit=limite or 50,
+    )
+    # The listed rows are a capped page; this total is not.
+    _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total",
+                                 group_field="customer")
+    _note = total_note(_total, _n, _g, "sales invoices", "customers")
+    # Say what the order is, so a date-ordered page is never read as a ranking.
+    _note += {
+        "valor": " Sorted by value, largest first, so these ARE the largest invoices.",
+        "valor_asc": " Sorted by value, smallest first - credit notes and returns lead.",
+        "em_divida": " Sorted by unpaid balance, largest first.",
+        "data_asc": " Sorted by date, OLDEST first.",
+    }.get(ordenar_por or "data",
+          " Sorted by date, newest first. This is NOT a ranking by value: ask again with "
+          "ordenar_por='valor' for the largest invoices.")
+
+
+    return ToolResult(
+        columns=[
+            text("name", "Invoice"),
+            text("posting_date", "Date"),
+            text("customer_name", "Customer"),
+            currency("base_grand_total", "Total"),
+            currency("outstanding_amount", "Outstanding"),
+            text("status", "Status"),
+            text("due_date", "Due date"),
+        ],
+        rows=rows,
+        source=describe("Sales Invoice (submitted)", company, from_date, to_date,
+                        {"customer": customer, "status": estado}),
+        filters_applied=dict(filters, ordenar_por=ordenar_por),
+        note=_note,
+    )

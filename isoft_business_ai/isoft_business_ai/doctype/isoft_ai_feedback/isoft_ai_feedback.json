@@ -1,0 +1,147 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-09 12:00:00.000000",
+ "description": "A user's report that an answer was wrong, incomplete or unclear. Recorded for investigation only: nothing here changes a tool, a definition or an answer on its own.",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "verdict",
+  "status",
+  "conversation",
+  "message",
+  "column_break_main",
+  "company",
+  "model",
+  "reported_on",
+  "sb_what",
+  "question",
+  "answer",
+  "comment",
+  "sb_evidence",
+  "tools_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "verdict",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Verdict",
+   "options": "Wrong number\nWrong interpretation\nIncomplete\nShould not have answered\nUnclear\nOther",
+   "reqd": 1
+  },
+  {
+   "default": "New",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "New\nInvestigating\nConfirmed\nNot a fault\nFixed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "Isoft AI Conversation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Answer",
+   "options": "Isoft AI Message",
+   "read_only": 1
+  },
+  {"fieldname": "column_break_main", "fieldtype": "Column Break"},
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reported_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Reported on",
+   "read_only": 1
+  },
+  {"fieldname": "sb_what", "fieldtype": "Section Break", "label": "What was reported"},
+  {
+   "fieldname": "question",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Question",
+   "read_only": 1
+  },
+  {
+   "fieldname": "answer",
+   "fieldtype": "Long Text",
+   "label": "Answer given",
+   "read_only": 1
+  },
+  {
+   "description": "What the user says is wrong with it.",
+   "fieldname": "comment",
+   "fieldtype": "Small Text",
+   "label": "Their comment"
+  },
+  {"fieldname": "sb_evidence", "fieldtype": "Section Break", "label": "Evidence"},
+  {
+   "description": "The tools that ran, with their parameters and row counts, exactly as recorded at the time. This is what a gold-set case is built from.",
+   "fieldname": "tools_json",
+   "fieldtype": "Long Text",
+   "label": "Tools that ran (JSON)",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-09 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Isoft Business AI",
+ "name": "Isoft AI Feedback",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "if_owner": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Business AI User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "question",
+ "track_changes": 1
+}

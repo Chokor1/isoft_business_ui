@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "creation": "2026-09-08 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "sb_model",
+  "provider",
+  "model",
+  "effort",
+  "cb_model",
+  "max_tokens",
+  "max_iterations",
+  "sb_limits",
+  "daily_question_limit",
+  "daily_token_limit",
+  "cb_limits",
+  "monthly_budget_usd",
+  "limits_help",
+  "sb_test",
+  "connection_status"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "Turning this off immediately suspends every question to the assistant.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "sb_model",
+   "fieldtype": "Section Break",
+   "label": "Model"
+  },
+  {
+   "default": "openai",
+   "description": "Which vendor answers. The tools, permissions and gold set are identical either way.",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "openai\nanthropic",
+   "reqd": 1
+  },
+  {
+   "default": "claude-opus-5",
+   "description": "Model id, e.g. gpt-5.6-terra or claude-opus-5.",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "reqd": 1
+  },
+  {
+   "default": "medium",
+   "description": "Reasoning depth. Anthropic only; ignored by OpenAI.",
+   "fieldname": "effort",
+   "fieldtype": "Select",
+   "label": "Effort",
+   "options": "low\nmedium\nhigh\nxhigh\nmax"
+  },
+  {
+   "fieldname": "cb_model",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "default": "8000",
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max tokens per answer"
+  },
+  {
+   "default": "6",
+   "description": "How many times the assistant may query data before answering.",
+   "fieldname": "max_iterations",
+   "fieldtype": "Int",
+   "label": "Max steps per question"
+  },
+  {
+   "fieldname": "sb_test",
+   "fieldtype": "Section Break",
+   "label": "Diagnostics"
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Small Text",
+   "label": "Connection status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_limits",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "fieldname": "daily_question_limit",
+   "fieldtype": "Int",
+   "default": "0",
+   "label": "Questions per user per day",
+   "description": "0 means no limit. Checked before the model is called, so a user who has reached it costs nothing."
+  },
+  {
+   "fieldname": "daily_token_limit",
+   "fieldtype": "Int",
+   "default": "0",
+   "label": "Tokens per user per day",
+   "description": "0 means no limit. Counts every token: fresh input, cached input and output."
+  },
+  {
+   "fieldname": "cb_limits",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "monthly_budget_usd",
+   "fieldtype": "Float",
+   "default": "0",
+   "precision": "2",
+   "label": "Monthly budget (USD)",
+   "description": "0 means no budget. Applies to the whole site for the calendar month and stops every user when reached."
+  },
+  {
+   "fieldname": "limits_help",
+   "fieldtype": "HTML",
+   "options": "<p style='color:var(--text-muted)'>Limits are enforced in the ask path, not just displayed. Usage and spend are on the <a href='/app/business-ai-usage'>Business AI Usage</a> page.</p>"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-12 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Isoft Business AI",
+ "name": "Isoft Business AI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

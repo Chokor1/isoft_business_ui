@@ -1,0 +1,79 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-08 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tool",
+  "arguments",
+  "row_count",
+  "elapsed_ms",
+  "source",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "tool",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tool",
+   "read_only": 1
+  },
+  {
+   "fieldname": "arguments",
+   "fieldtype": "Long Text",
+   "label": "Arguments",
+   "read_only": 1
+  },
+  {
+   "fieldname": "row_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Rows returned",
+   "read_only": 1
+  },
+  {
+   "fieldname": "elapsed_ms",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Duration (ms)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Small Text",
+   "label": "Data source",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "label": "Error",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-09-08 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Isoft Business AI",
+ "name": "Isoft AI Query Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

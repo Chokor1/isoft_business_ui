@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include isoft_business_ai *.css
+recursive-include isoft_business_ai *.csv
+recursive-include isoft_business_ai *.html
+recursive-include isoft_business_ai *.ico
+recursive-include isoft_business_ai *.js
+recursive-include isoft_business_ai *.json
+recursive-include isoft_business_ai *.md
+recursive-include isoft_business_ai *.png
+recursive-include isoft_business_ai *.py
+recursive-include isoft_business_ai *.svg
+recursive-include isoft_business_ai *.txt
+recursive-exclude isoft_business_ai *.pyc

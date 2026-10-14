@@ -1,0 +1,12 @@
+.DS_Store
+*.pyc
+*.egg-info
+*.swp
+tags
+isoft_business_ai/docs/current
+
+# Site-specific test data. The gold set names this installation's own customers,
+# suppliers and accounts, and the baseline stores its real figures, so neither
+# belongs in a shared repository. Start from tests/gold_set.example.json.
+isoft_business_ai/tests/gold_set.json
+isoft_business_ai/tests/baseline.json

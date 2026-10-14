@@ -1,0 +1,1108 @@
+/* ISOFT Business AI — assistant interface.
+ *
+ * Plain CSS, not SCSS: this bench's node-sass build is broken, so anything
+ * routed through the bundler would silently never rebuild.
+ *
+ * Theme: "galaxy". One identity in two lights, following the desk rather than
+ * fighting it — Frappe stamps data-theme="dark" on <html> (theme_switcher.js),
+ * and everything below is a token pair keyed to that. Dark is deep space: the
+ * ISOFT login ground (#05070b), a nebula wash and a quiet starfield. Light is
+ * the same galaxy seen in daylight: white surfaces, the same #2490EF primary
+ * and its violet companion, nebula reduced to a tint and no stars (white specks
+ * on white read as dust, not sky).
+ *
+ * Every selector is prefixed .ibai- or scoped under .ibai-panel / .ibai-console
+ * so nothing here can reach another ERP screen.
+ */
+
+/* ------------------------------------------------------- light (default) */
+
+:root {
+  --ibai-ground: #e9edf4;
+  --ibai-surface: #ffffff;
+  --ibai-surface-2: #f5f8fc;
+  --ibai-surface-3: #eceff6;
+  --ibai-surface-4: #dde3ed;
+
+  --ibai-line: #dbe1ea;
+  --ibai-line-soft: #eaeef5;
+  --ibai-hover: rgba(16, 28, 48, 0.06);
+  --ibai-band: rgba(16, 28, 48, 0.022);
+
+  --ibai-text: #15202e;
+  --ibai-text-2: #566477;
+  --ibai-text-3: #64707f;
+
+  /* The login page's primary, and the violet it sits beside in the galaxy. */
+  --ibai-accent: #2490ef;
+  --ibai-accent-hover: #1579d8;
+  --ibai-accent-soft: rgba(36, 144, 239, 0.10);
+  --ibai-accent-line: rgba(36, 144, 239, 0.40);
+  --ibai-accent-2: #7a5af0;
+  --ibai-glow: rgba(36, 144, 239, 0.28);
+
+  --ibai-ok: #18a05c;
+  --ibai-ok-soft: rgba(24, 160, 92, 0.10);
+  --ibai-warn: #b3760c;
+  --ibai-warn-soft: rgba(179, 118, 12, 0.11);
+  --ibai-danger: #d6453a;
+  --ibai-danger-soft: rgba(214, 69, 58, 0.09);
+
+  /* Nebula: a tint in daylight, so text stays the loudest thing on screen. */
+  --ibai-nebula:
+    radial-gradient(1100px 440px at 88% -8%, rgba(122, 90, 240, 0.10), transparent 62%),
+    radial-gradient(900px 420px at 6% 104%, rgba(36, 144, 239, 0.09), transparent 62%);
+  --ibai-starfield: none;
+
+  --ibai-shadow: 0 1px 2px rgba(18, 32, 56, .07), 0 16px 40px -14px rgba(18, 32, 56, .22);
+  --ibai-shadow-sm: 0 1px 3px rgba(18, 32, 56, .10);
+
+  /* 4 / 8 scale. */
+  --ibai-1: 4px;  --ibai-2: 8px;  --ibai-3: 12px;
+  --ibai-4: 16px; --ibai-5: 20px; --ibai-6: 24px;
+
+  --ibai-r: 12px;
+  --ibai-r-sm: 8px;
+  --ibai-r-xs: 6px;
+
+  /* The desk's own stack: the assistant should not introduce a typeface. */
+  --ibai-font: inherit;
+  --ibai-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* The mark's disc: deep space in both themes, so the galaxy never sits on
+     a white button. Used by the launcher, the rail brand and the empty state. */
+  --ibai-disc:
+    radial-gradient(62% 62% at 28% 24%, rgba(124, 92, 240, .36), transparent 70%),
+    radial-gradient(70% 70% at 76% 82%, rgba(36, 144, 239, .30), transparent 70%),
+    #070b14;
+  --ibai-ms: 170ms;
+}
+
+/* ------------------------------------------------------------------ dark */
+
+[data-theme="dark"] {
+  --ibai-ground: #05070b;
+  --ibai-surface: #0b1018;
+  --ibai-surface-2: #121a25;
+  --ibai-surface-3: #1a2432;
+  --ibai-surface-4: #243040;
+
+  --ibai-line: #222c3a;
+  --ibai-line-soft: #18212c;
+  --ibai-hover: rgba(255, 255, 255, 0.08);
+  --ibai-band: rgba(255, 255, 255, 0.022);
+
+  --ibai-text: #e8edf4;
+  --ibai-text-2: #97a5b6;
+  --ibai-text-3: #7b8b9e;
+
+  --ibai-accent: #2490ef;
+  --ibai-accent-hover: #4aa6f5;
+  --ibai-accent-soft: rgba(36, 144, 239, 0.16);
+  --ibai-accent-line: rgba(36, 144, 239, 0.44);
+  --ibai-accent-2: #9b7bff;
+  --ibai-glow: rgba(118, 92, 240, 0.55);
+
+  --ibai-ok: #35c77f;
+  --ibai-ok-soft: rgba(53, 199, 127, 0.14);
+  --ibai-warn: #e0a33d;
+  --ibai-warn-soft: rgba(224, 163, 61, 0.14);
+  --ibai-danger: #f0756b;
+  --ibai-danger-soft: rgba(240, 117, 107, 0.14);
+
+  --ibai-nebula:
+    radial-gradient(1150px 460px at 88% -8%, rgba(124, 92, 240, 0.20), transparent 62%),
+    radial-gradient(950px 440px at 4% 104%, rgba(36, 144, 239, 0.16), transparent 62%),
+    radial-gradient(700px 300px at 50% 45%, rgba(34, 211, 238, 0.05), transparent 70%);
+
+  /* A fixed constellation rather than a tiled pattern: fourteen points read as
+     sky and cost one paint, where a repeating texture reads as noise. */
+  --ibai-starfield:
+    radial-gradient(1.4px 1.4px at 12% 14%, rgba(255,255,255,.75), transparent 60%),
+    radial-gradient(1px 1px at 27% 61%, rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(1.6px 1.6px at 41% 23%, rgba(201,221,255,.70), transparent 60%),
+    radial-gradient(1px 1px at 58% 78%, rgba(255,255,255,.40), transparent 60%),
+    radial-gradient(1.2px 1.2px at 69% 12%, rgba(255,255,255,.58), transparent 60%),
+    radial-gradient(1px 1px at 81% 47%, rgba(214,199,255,.52), transparent 60%),
+    radial-gradient(1.5px 1.5px at 92% 82%, rgba(255,255,255,.62), transparent 60%),
+    radial-gradient(1px 1px at 8% 88%, rgba(255,255,255,.36), transparent 60%),
+    radial-gradient(1.1px 1.1px at 35% 92%, rgba(190,214,255,.48), transparent 60%),
+    radial-gradient(1px 1px at 52% 34%, rgba(255,255,255,.34), transparent 60%),
+    radial-gradient(1.3px 1.3px at 74% 66%, rgba(255,255,255,.50), transparent 60%),
+    radial-gradient(1px 1px at 19% 42%, rgba(224,212,255,.42), transparent 60%),
+    radial-gradient(1.2px 1.2px at 63% 55%, rgba(255,255,255,.38), transparent 60%),
+    radial-gradient(1px 1px at 88% 28%, rgba(255,255,255,.44), transparent 60%);
+
+  --ibai-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 16px 40px -12px rgba(0, 0, 0, .7);
+  --ibai-shadow-sm: 0 1px 3px rgba(0, 0, 0, .45);
+}
+
+/* ------------------------------------------------------------ focus reset */
+/* Bootstrap 4's reboot sets button:focus { outline: 5px auto
+   -webkit-focus-ring-color }, which Chrome paints as a dark ring. Cleared for
+   this app's controls only; :focus-visible keeps a real ring for keyboards. */
+
+.ibai-launcher:focus,
+.ibai-panel button:focus,
+.ibai-panel a:focus,
+.ibai-console button:focus,
+.ibai-console a:focus { outline: none; }
+
+.ibai-launcher, .ibai-panel button, .ibai-console button {
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--ibai-font);
+}
+
+.ibai-launcher:focus-visible,
+.ibai-panel button:focus-visible,
+.ibai-panel a:focus-visible,
+.ibai-panel textarea:focus-visible,
+.ibai-panel input:focus-visible,
+.ibai-console button:focus-visible,
+.ibai-console a:focus-visible,
+.ibai-console textarea:focus-visible,
+.ibai-console input:focus-visible {
+  outline: 2px solid var(--ibai-accent);
+  outline-offset: 2px;
+}
+/* The composer draws its own focus ring on the .ibai-field wrapper, so the
+   textarea inside it must not add a second one. Specificity has to match the
+   rules above, which select it as `textarea`. */
+.ibai-panel .ibai-input:focus-visible,
+.ibai-panel .ibai-input:focus,
+.ibai-console .ibai-input:focus-visible,
+.ibai-console .ibai-input:focus { outline: none; }
+
+/* ---------------------------------------------------------------- launcher */
+
+.ibai-launcher {
+  position: fixed; right: var(--ibai-6); bottom: var(--ibai-6);
+  width: 52px; height: 52px; padding: 0;
+  border: 1px solid var(--ibai-accent-line);
+  border-radius: 50%;
+  /* Deep space in both themes: a galaxy on a white disc washes out, and the
+     mark should be the same object whatever the desk is wearing. */
+  background: var(--ibai-disc);
+  color: #fff;
+  box-shadow: var(--ibai-shadow-sm), 0 0 18px -4px var(--ibai-glow);
+  cursor: pointer; z-index: 1030;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform var(--ibai-ms) ease, background var(--ibai-ms) ease,
+              opacity var(--ibai-ms) ease, visibility var(--ibai-ms) ease;
+}
+.ibai-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--ibai-shadow-sm), 0 0 26px -2px var(--ibai-glow);
+}
+.ibai-launcher:active { transform: none; }
+
+/* --- the galaxy mark --- */
+.ibai-galaxy { display: block; overflow: visible; }
+.ibai-galaxy .g0 { stop-color: #ffffff; }
+.ibai-galaxy .g1 { stop-color: var(--ibai-accent-2); stop-opacity: .9; }
+.ibai-galaxy .g2 { stop-color: var(--ibai-accent-2); stop-opacity: 0; }
+.ibai-galaxy .a0 { stop-color: var(--ibai-accent); }
+.ibai-galaxy .a1 { stop-color: var(--ibai-accent-2); }
+.ibai-galaxy-star { fill: #fff; opacity: .7; }
+.ibai-galaxy-disc {
+  transform: rotate(-20deg); transform-origin: 24px 24px;
+  transition: transform 700ms cubic-bezier(.4, 0, .2, 1);
+}
+.ibai-launcher:hover .ibai-galaxy-disc { transform: rotate(-2deg); }
+/* The open panel carries its own close button in the header, and the launcher
+   would sit exactly on top of the send button. So it steps aside. */
+.ibai-launcher.is-open { opacity: 0; visibility: hidden; }
+/* Hidden outright on the full workspace, which is the assistant already. */
+.ibai-launcher.ibai-hidden { display: none; }
+
+/* ----------------------------------------------------------- quick panel */
+
+.ibai-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 440px; min-width: 380px; max-width: 640px;
+  background-color: var(--ibai-surface);
+  background-image: var(--ibai-nebula);
+  background-repeat: no-repeat;
+  color: var(--ibai-text);
+  font-family: var(--ibai-font);
+  font-size: 14px; line-height: 1.6;
+  border-left: 1px solid var(--ibai-line);
+  box-shadow: var(--ibai-shadow);
+  z-index: 1029;
+  display: flex; flex-direction: column; overflow: hidden;
+  /* Kept mounted when closed so the conversation survives a minimise. */
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform var(--ibai-ms) cubic-bezier(.32, .72, 0, 1), visibility var(--ibai-ms);
+}
+.ibai-panel.is-open { transform: none; visibility: visible; }
+
+/* The drag handle lives on the left edge. */
+.ibai-grip {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  cursor: col-resize; z-index: 3; background: transparent;
+  border: none; padding: 0;
+}
+.ibai-grip:hover, .ibai-grip.is-dragging { background: var(--ibai-accent-line); }
+body.ibai-resizing { cursor: col-resize; user-select: none; }
+
+/* ------------------------------------------------------------------ header */
+
+.ibai-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: var(--ibai-2);
+  padding: var(--ibai-3);
+  background: var(--ibai-surface-2);
+  border-bottom: 1px solid var(--ibai-line);
+}
+.ibai-head-mark {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ibai-accent-line);
+  background: var(--ibai-disc);
+  box-shadow: 0 0 12px -5px var(--ibai-glow);
+}
+.ibai-head-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ibai-head-actions { display: flex; gap: 2px; flex: 0 0 auto; }
+
+.ibai-ico {
+  width: 28px; height: 28px; padding: 0;
+  background: transparent; border: none; border-radius: var(--ibai-r-xs);
+  color: var(--ibai-text-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--ibai-ms) ease, color var(--ibai-ms) ease;
+}
+.ibai-ico:hover { background: var(--ibai-surface-3); color: var(--ibai-text); }
+.ibai-ico[disabled] { opacity: .4; cursor: default; }
+
+/* Current context, directly under the name. */
+.ibai-context {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--ibai-2);
+  padding: var(--ibai-2) var(--ibai-4);
+  background: var(--ibai-surface-2);
+  border-bottom: 1px solid var(--ibai-line);
+  font-size: 11.5px; color: var(--ibai-text-2);
+}
+.ibai-context-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  background: var(--ibai-accent-soft); border: 1px solid var(--ibai-accent-line);
+  color: var(--ibai-text); border-radius: 99px; padding: 3px 4px 3px 10px;
+  font-size: 11.5px; max-width: 100%;
+}
+.ibai-context-chip .dt { color: var(--ibai-text-2); white-space: nowrap; }
+.ibai-context-chip .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibai-context-x {
+  flex: 0 0 auto; width: 18px; height: 18px; padding: 0; border: none;
+  border-radius: 50%; background: transparent; color: var(--ibai-text-2);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.ibai-context-x:hover { background: var(--ibai-hover); color: var(--ibai-text); }
+.ibai-context-add {
+  background: transparent; border: 1px dashed var(--ibai-line);
+  color: var(--ibai-text-2); border-radius: 99px; padding: 3px 10px;
+  font-size: 11.5px; cursor: pointer; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ibai-context-add:hover { border-color: var(--ibai-accent-line); color: var(--ibai-text); }
+
+/* ----------------------------------------------------------------- history */
+
+.ibai-body { flex: 1 1 auto; position: relative; min-height: 0; display: flex; }
+/* Sky behind the conversation. Absolute, so it does not scroll with the
+   messages, and empty in the light theme (--ibai-starfield: none). */
+.ibai-body::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  background-image: var(--ibai-starfield);
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.ibai-stream { position: relative; z-index: 1; }
+
+/* In the quick panel history is a drawer over the conversation. */
+.ibai-drawer {
+  position: absolute; inset: 0; z-index: 4;
+  background: var(--ibai-surface);
+  display: flex; flex-direction: column;
+}
+.ibai-drawer[hidden] { display: none; }
+.ibai-drawer-top {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--ibai-2);
+  padding: var(--ibai-2) var(--ibai-2) var(--ibai-2) var(--ibai-4);
+  border-bottom: 1px solid var(--ibai-line);
+}
+.ibai-drawer-title {
+  flex: 1 1 auto; font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ibai-text-3);
+}
+
+.ibai-search {
+  flex: 0 0 auto; padding: var(--ibai-2) var(--ibai-3);
+  border-bottom: 1px solid var(--ibai-line-soft);
+}
+.ibai-search input {
+  width: 100%; border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  background: var(--ibai-surface-2); color: var(--ibai-text);
+  font-size: 13px; padding: 7px 10px; font-family: var(--ibai-font);
+}
+.ibai-search input::placeholder { color: var(--ibai-text-3); }
+.ibai-search input:focus { outline: none; border-color: var(--ibai-accent-line); }
+
+.ibai-hlist { flex: 1 1 auto; overflow-y: auto; padding-bottom: var(--ibai-2); }
+.ibai-hgroup {
+  font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ibai-text-3); font-weight: 600;
+  padding: var(--ibai-3) var(--ibai-4) var(--ibai-1);
+}
+.ibai-hrow {
+  display: flex; align-items: center; gap: var(--ibai-2);
+  padding: 7px var(--ibai-2) 7px var(--ibai-4);
+  border-left: 2px solid transparent;
+  cursor: pointer; color: var(--ibai-text);
+}
+.ibai-hrow:hover { background: var(--ibai-surface-2); }
+.ibai-hrow.active { background: var(--ibai-surface-2); border-left-color: var(--ibai-accent); }
+.ibai-hrow-main { flex: 1 1 auto; min-width: 0; }
+.ibai-hrow-t {
+  font-size: 13px; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ibai-hrow.active .ibai-hrow-t { font-weight: 600; }
+.ibai-hrow-w { font-size: 10.5px; color: var(--ibai-text-3); margin-top: 1px; }
+.ibai-hrow-menu {
+  flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: none;
+  background: transparent; color: var(--ibai-text-3); border-radius: var(--ibai-r-xs);
+  cursor: pointer; opacity: 0; display: flex; align-items: center; justify-content: center;
+  transition: opacity var(--ibai-ms) ease;
+}
+.ibai-hrow:hover .ibai-hrow-menu,
+.ibai-hrow-menu:focus-visible { opacity: 1; }
+.ibai-hrow-menu:hover { background: var(--ibai-surface-3); color: var(--ibai-text); }
+
+.ibai-menu {
+  position: fixed; z-index: 1040; min-width: 150px;
+  background: var(--ibai-surface-3); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); box-shadow: var(--ibai-shadow);
+  padding: var(--ibai-1); overflow: hidden;
+}
+.ibai-menu button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none; color: var(--ibai-text);
+  font-size: 13px; padding: 7px 10px; border-radius: var(--ibai-r-xs); cursor: pointer;
+}
+.ibai-menu button:hover { background: var(--ibai-surface-4); }
+.ibai-menu button.danger { color: var(--ibai-danger); }
+
+.ibai-empty { padding: var(--ibai-5) var(--ibai-4); font-size: 13px; color: var(--ibai-text-3); text-align: center; }
+
+/* ------------------------------------------------------------------ stream */
+
+.ibai-stream {
+  flex: 1 1 auto; min-width: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding: var(--ibai-5) var(--ibai-4) var(--ibai-2);
+  scrollbar-width: thin; scrollbar-color: var(--ibai-surface-4) transparent;
+}
+.ibai-stream::-webkit-scrollbar { width: 10px; }
+.ibai-stream::-webkit-scrollbar-thumb {
+  background: var(--ibai-surface-4); border-radius: 99px;
+  border: 3px solid transparent; background-clip: padding-box;
+}
+
+/* --- empty state --- */
+.ibai-welcome { padding: var(--ibai-4) 0 var(--ibai-2); }
+/* "Where you stand" — the targets and alerts, one click away instead of six
+   cards deep on every open. */
+.ibai-disclose {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: var(--ibai-4);
+  background: transparent; border: 1px solid var(--ibai-line);
+  color: var(--ibai-text-2); border-radius: 99px;
+  padding: 4px 12px 4px 10px; font-size: 12px; cursor: pointer;
+  transition: border-color var(--ibai-ms) ease, color var(--ibai-ms) ease;
+}
+.ibai-disclose[hidden] { display: none; }
+.ibai-disclose:hover { border-color: var(--ibai-accent-line); color: var(--ibai-text); }
+.ibai-disclose::before {
+  content: "\25B8"; font-size: 10px; line-height: 1;
+  transition: transform var(--ibai-ms) ease;
+}
+.ibai-disclose.is-open::before { transform: rotate(90deg); }
+.ibai-disclose .n {
+  background: var(--ibai-surface-3); border-radius: 99px;
+  padding: 0 6px; font-size: 10.5px; font-weight: 600; color: var(--ibai-text-2);
+}
+.ibai-brief[hidden] { display: none; }
+.ibai-welcome-title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.ibai-welcome-sub { font-size: 13px; color: var(--ibai-text-2); margin-top: var(--ibai-1); }
+.ibai-brief { display: grid; gap: var(--ibai-2); margin-top: var(--ibai-4); }
+.ibai-starters { display: grid; gap: var(--ibai-2); margin-top: var(--ibai-4); }
+.ibai-starter {
+  display: block; width: 100%; text-align: left;
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  color: var(--ibai-text); border-radius: var(--ibai-r-sm);
+  padding: 9px var(--ibai-3); font-size: 13px; cursor: pointer;
+  transition: border-color var(--ibai-ms) ease, background var(--ibai-ms) ease;
+}
+.ibai-starter:hover { border-color: var(--ibai-accent-line); background: var(--ibai-surface-3); }
+
+/* --- briefing cards --- */
+.ibai-card {
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-left: 3px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  padding: var(--ibai-3); cursor: pointer; text-align: left; width: 100%;
+  transition: border-color var(--ibai-ms) ease;
+}
+.ibai-card:hover { border-color: var(--ibai-accent-line); }
+.ibai-card-top { display: flex; align-items: baseline; gap: var(--ibai-2); }
+.ibai-card-t { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.ibai-card-v {
+  flex: 0 0 auto; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em;
+  font-weight: 700; padding: 2px 6px; border-radius: var(--ibai-r-xs);
+}
+.ibai-card-d { font-size: 12px; color: var(--ibai-text-2); margin-top: 3px; line-height: 1.5; }
+.ibai-card-f {
+  display: flex; flex-wrap: wrap; gap: 3px var(--ibai-3); margin-top: var(--ibai-2);
+  font-size: 11.5px; color: var(--ibai-text-2); font-variant-numeric: tabular-nums;
+}
+.ibai-need { color: var(--ibai-text); font-weight: 600; }
+.ibai-meter { height: 4px; border-radius: 99px; background: var(--ibai-surface-4); overflow: hidden; margin-top: var(--ibai-2); }
+.ibai-meter > span { display: block; height: 100%; border-radius: 99px; background: var(--ibai-accent); }
+
+.v-met, .v-on-track { border-left-color: var(--ibai-ok) !important; }
+.v-met .ibai-card-v, .v-on-track .ibai-card-v { color: var(--ibai-ok); background: var(--ibai-ok-soft); }
+.v-met .ibai-meter > span, .v-on-track .ibai-meter > span { background: var(--ibai-ok); }
+.v-behind { border-left-color: var(--ibai-warn) !important; }
+.v-behind .ibai-card-v { color: var(--ibai-warn); background: var(--ibai-warn-soft); }
+.v-behind .ibai-meter > span { background: var(--ibai-warn); }
+.v-missed { border-left-color: var(--ibai-danger) !important; }
+.v-missed .ibai-card-v { color: var(--ibai-danger); background: var(--ibai-danger-soft); }
+.v-missed .ibai-meter > span { background: var(--ibai-danger); }
+.s-high { border-left-color: var(--ibai-danger) !important; }
+.s-medium { border-left-color: var(--ibai-warn) !important; }
+.s-low { border-left-color: var(--ibai-text-3) !important; }
+
+/* ---------------------------------------------------------------- messages */
+
+.ibai-turn { margin-bottom: var(--ibai-5); }
+.ibai-turn-user { display: flex; justify-content: flex-end; }
+.ibai-bubble {
+  background: var(--ibai-accent-soft);
+  border: 1px solid var(--ibai-accent-line);
+  color: var(--ibai-text);
+  border-radius: var(--ibai-r); border-bottom-right-radius: var(--ibai-1);
+  padding: 9px var(--ibai-3); max-width: 86%;
+  font-size: 14px; line-height: 1.6; overflow-wrap: anywhere;
+}
+.ibai-turn-bot { position: relative; }
+.ibai-answer { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.ibai-answer strong { font-weight: 600; }
+.ibai-when { font-size: 10.5px; color: var(--ibai-text-3); margin-top: var(--ibai-2); }
+.ibai-turn-user .ibai-when { text-align: right; }
+
+/* Copy, revealed on hover or keyboard focus. */
+.ibai-turn-tools {
+  display: flex; gap: var(--ibai-1); margin-top: var(--ibai-2);
+  opacity: 0; transition: opacity var(--ibai-ms) ease;
+}
+.ibai-turn:hover .ibai-turn-tools,
+.ibai-turn-tools:focus-within { opacity: 1; }
+.ibai-tool {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: 1px solid var(--ibai-line);
+  color: var(--ibai-text-2); border-radius: var(--ibai-r-xs);
+  padding: 3px 8px; font-size: 11px; cursor: pointer;
+}
+.ibai-tool:hover { background: var(--ibai-surface-2); color: var(--ibai-text); }
+.ibai-flag:hover { border-color: var(--ibai-danger); color: var(--ibai-danger); }
+.ibai-tool.is-done { color: var(--ibai-ok); border-color: var(--ibai-ok); opacity: 1; cursor: default; }
+.ibai-tool.is-done:hover { background: transparent; color: var(--ibai-ok); }
+
+/* What actually ran, reported after the fact — never a live guess. */
+.ibai-steps { display: flex; flex-wrap: wrap; gap: var(--ibai-1); margin-bottom: var(--ibai-2); }
+.ibai-step {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: 99px; padding: 2px 9px; font-size: 10.5px; color: var(--ibai-text-2);
+}
+.ibai-step svg { color: var(--ibai-ok); flex: 0 0 auto; }
+.ibai-step b { font-weight: 600; color: var(--ibai-text); font-family: var(--ibai-mono); font-size: 10px; }
+.ibai-step i { font-style: normal; opacity: .8; }
+
+.ibai-working {
+  display: inline-flex; align-items: center; gap: var(--ibai-2);
+  font-size: 13px; color: var(--ibai-text-2);
+}
+.ibai-dots { display: inline-flex; gap: 3px; }
+.ibai-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ibai-text-3); animation: ibai-blink 1.3s infinite; }
+.ibai-dot:nth-child(2) { animation-delay: .18s; }
+.ibai-dot:nth-child(3) { animation-delay: .36s; }
+@keyframes ibai-blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+/* --- inline error with a working retry --- */
+.ibai-fail {
+  background: var(--ibai-danger-soft); border: 1px solid var(--ibai-danger);
+  border-radius: var(--ibai-r-sm); padding: var(--ibai-3);
+  display: flex; align-items: flex-start; gap: var(--ibai-3);
+}
+.ibai-fail-text { flex: 1 1 auto; min-width: 0; font-size: 13px; }
+.ibai-fail-text b { display: block; color: var(--ibai-danger); font-weight: 600; margin-bottom: 2px; }
+.ibai-retry {
+  flex: 0 0 auto; background: transparent; border: 1px solid var(--ibai-danger);
+  color: var(--ibai-danger); border-radius: var(--ibai-r-xs);
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+.ibai-retry:hover { background: var(--ibai-danger); color: var(--ibai-ground); }
+
+/* ----------------------------------------------------------------- results */
+
+.ibai-result { margin-top: var(--ibai-3); }
+.ibai-doc-header {
+  display: grid; grid-template-columns: auto 1fr; gap: 3px var(--ibai-4);
+  font-size: 12px; margin-bottom: var(--ibai-2);
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); padding: var(--ibai-3);
+}
+.ibai-doc-header dt { color: var(--ibai-text-2); white-space: nowrap; }
+.ibai-doc-header dd { margin: 0; font-weight: 500; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+.ibai-table-wrap {
+  overflow-x: auto; overflow-y: auto; max-height: 340px;
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  background: var(--ibai-surface-2);
+  scrollbar-width: thin;
+}
+.ibai-table-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+.ibai-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--ibai-surface-4); border-radius: 99px;
+  border: 3px solid transparent; background-clip: padding-box;
+}
+.ibai-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+
+/* Spreadsheet grid. Finance reads these tables the way they read a sheet, so
+   every cell gets a rule on both axes, numbers are monospaced and right
+   aligned, and the header stays put while the body scrolls. */
+.ibai-table th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--ibai-surface-3); color: var(--ibai-text-2);
+  font-size: 10px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600;
+  text-align: left; white-space: nowrap; padding: 7px 10px;
+  border-bottom: 1px solid var(--ibai-line);
+  border-right: 1px solid var(--ibai-line);
+}
+.ibai-table th:last-child { border-right: none; }
+.ibai-table th.ibai-num { text-align: right; }
+.ibai-table td {
+  padding: 5px 10px; white-space: nowrap;
+  border-bottom: 1px solid var(--ibai-line-soft);
+  border-right: 1px solid var(--ibai-line-soft);
+}
+.ibai-table td:last-child { border-right: none; }
+.ibai-table tbody tr:last-child td { border-bottom: none; }
+/* Banding, then hover on top of it. */
+.ibai-table tbody tr:nth-child(even) td { background: var(--ibai-band); }
+.ibai-table tbody tr:hover td { background: var(--ibai-surface-3); }
+.ibai-table td.ibai-num {
+  text-align: right;
+  font-family: var(--ibai-mono); font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ibai-table td.ibai-neg { color: var(--ibai-danger); }
+
+/* Subtotal and total rows, where a tool marks them. A balancete is unreadable
+   without them standing out from the accounts they sum. */
+.ibai-table tr.ibai-r-subtotal td {
+  background: var(--ibai-surface-3) !important;
+  font-weight: 600; border-top: 1px solid var(--ibai-line);
+}
+.ibai-table tr.ibai-r-total td {
+  background: var(--ibai-accent-soft) !important;
+  font-weight: 700; color: var(--ibai-text);
+  border-top: 2px solid var(--ibai-accent-line);
+  border-bottom: 1px solid var(--ibai-accent-line);
+}
+.ibai-table tr.ibai-r-total td.ibai-num { font-size: 12px; }
+
+/* The label column stays on screen while the figures scroll under it. */
+.ibai-result.is-sheet .ibai-table td:first-child,
+.ibai-result.is-sheet .ibai-table th:first-child {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--ibai-surface-2);
+  border-right: 1px solid var(--ibai-line);
+}
+.ibai-result.is-sheet .ibai-table th:first-child { z-index: 3; background: var(--ibai-surface-3); }
+.ibai-result.is-sheet .ibai-table tbody tr:nth-child(even) td:first-child { background: var(--ibai-band); }
+.ibai-result.is-sheet .ibai-table tr.ibai-r-subtotal td:first-child { background: var(--ibai-surface-3) !important; }
+.ibai-result.is-sheet .ibai-table tr.ibai-r-total td:first-child { background: var(--ibai-accent-soft) !important; }
+.ibai-result.is-sheet .ibai-table-wrap { max-height: 560px; }
+
+.ibai-source { font-size: 11px; color: var(--ibai-text-3); margin-top: var(--ibai-2); line-height: 1.5; }
+.ibai-note { margin-top: 3px; color: var(--ibai-text-2); }
+.ibai-export { color: var(--ibai-accent); cursor: pointer; }
+
+.ibai-links { display: flex; flex-wrap: wrap; gap: var(--ibai-2); margin-top: var(--ibai-2); }
+.ibai-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  color: var(--ibai-text) !important; text-decoration: none !important;
+  border-radius: var(--ibai-r-xs); padding: 4px 10px; font-size: 12px; font-weight: 500;
+  transition: border-color var(--ibai-ms) ease;
+}
+.ibai-link::after { content: "\2192"; color: var(--ibai-text-3); }
+.ibai-link:hover { border-color: var(--ibai-accent-line); }
+.ibai-link:hover::after { color: var(--ibai-accent); }
+
+/* -------------------------------------------------------- jump to latest */
+
+.ibai-jump {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: var(--ibai-3); z-index: 5;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--ibai-surface-3); border: 1px solid var(--ibai-line);
+  color: var(--ibai-text); border-radius: 99px;
+  padding: 5px 12px; font-size: 12px; cursor: pointer;
+  box-shadow: var(--ibai-shadow-sm);
+}
+.ibai-jump[hidden] { display: none; }
+.ibai-jump:hover { border-color: var(--ibai-accent-line); }
+
+/* ---------------------------------------------------------------- composer */
+
+.ibai-composer {
+  flex: 0 0 auto; position: relative;
+  padding: var(--ibai-3) var(--ibai-4) var(--ibai-3);
+  border-top: 1px solid var(--ibai-line);
+  background: var(--ibai-surface);
+}
+.ibai-field {
+  display: flex; align-items: flex-end; gap: var(--ibai-2);
+  background: var(--ibai-surface-2);
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r);
+  padding: var(--ibai-2) var(--ibai-2) var(--ibai-2) var(--ibai-3);
+  transition: border-color var(--ibai-ms) ease, box-shadow var(--ibai-ms) ease;
+}
+.ibai-field:focus-within {
+  border-color: var(--ibai-accent);
+  box-shadow: 0 0 0 3px var(--ibai-accent-soft);
+}
+.ibai-input {
+  flex: 1 1 auto; min-width: 0; resize: none; border: none; outline: none;
+  background: transparent; color: var(--ibai-text);
+  font-family: var(--ibai-font); font-size: 14px; line-height: 1.55;
+  padding: 5px 0; min-height: 36px; max-height: 190px; overflow-y: auto;
+}
+.ibai-input::placeholder { color: var(--ibai-text-3); }
+.ibai-send {
+  flex: 0 0 auto; width: 32px; height: 32px; padding: 0;
+  border: none; border-radius: var(--ibai-r-sm);
+  background: var(--ibai-accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: background var(--ibai-ms) ease, opacity var(--ibai-ms) ease;
+}
+.ibai-send:hover:not(:disabled) { background: var(--ibai-accent-hover); }
+.ibai-send:disabled { opacity: .35; cursor: default; }
+
+.ibai-foot {
+  display: flex; align-items: center; gap: var(--ibai-2);
+  margin-top: var(--ibai-2);
+  font-size: 11px; color: var(--ibai-text-3);
+}
+.ibai-foot .ibai-hint { flex: 1 1 auto; }
+.ibai-mute {
+  flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+  background: transparent; border: none; border-radius: var(--ibai-r-xs);
+  color: var(--ibai-text-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.ibai-mute:hover { background: var(--ibai-surface-2); color: var(--ibai-text); }
+
+/* ---------------------------------------------------------------- mentions */
+
+.ibai-mention {
+  background: var(--ibai-accent-soft); color: var(--ibai-accent);
+  border-radius: var(--ibai-r-xs); padding: 1px 6px;
+  font-size: .93em; font-weight: 600; white-space: nowrap;
+}
+.ibai-mentions {
+  position: absolute; left: var(--ibai-4); right: var(--ibai-4);
+  bottom: calc(100% - var(--ibai-2));
+  background: var(--ibai-surface-3); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); box-shadow: var(--ibai-shadow);
+  max-height: 240px; overflow-y: auto; z-index: 6;
+}
+.ibai-mentions[hidden] { display: none; }
+
+/* Suggestions while typing. Same anchor as the @ menu, and only one of the
+   two is ever open. */
+.ibai-typeahead {
+  position: absolute; left: var(--ibai-4); right: var(--ibai-4); bottom: 100%;
+  margin-bottom: var(--ibai-2); z-index: 8;
+  background: var(--ibai-surface-3); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); box-shadow: var(--ibai-shadow);
+  padding: var(--ibai-1); overflow: hidden;
+}
+.ibai-typeahead[hidden] { display: none; }
+.ibai-typeahead-head {
+  font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ibai-text-3); font-weight: 600; padding: 5px 9px 3px;
+}
+.ibai-typeahead-row {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none; color: var(--ibai-text);
+  font-size: 13px; padding: 6px 9px; border-radius: var(--ibai-r-xs);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ibai-typeahead-row:hover,
+.ibai-typeahead-row.active { background: var(--ibai-accent-soft); }
+/* Both popovers line up with the composer field, which is centred at 820px,
+   not with the full width of the main column. */
+.ibai-console .ibai-typeahead,
+.ibai-console .ibai-mentions {
+  left: 50%; right: auto; transform: translateX(-50%);
+  width: calc(100% - 2 * var(--ibai-6)); max-width: 820px;
+}
+.ibai-mention-row {
+  display: flex; align-items: baseline; gap: var(--ibai-2);
+  padding: 7px var(--ibai-3); cursor: pointer; font-size: 12.5px; min-width: 0;
+}
+.ibai-mention-row + .ibai-mention-row { border-top: 1px solid var(--ibai-line-soft); }
+.ibai-mention-row:hover, .ibai-mention-row.active { background: var(--ibai-surface-4); }
+.ibai-mention-dt { color: var(--ibai-text-3); font-size: 10.5px; white-space: nowrap; }
+.ibai-mention-nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibai-mention-lb { color: var(--ibai-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibai-mention-here {
+  margin-left: auto; flex: 0 0 auto; color: var(--ibai-accent);
+  background: var(--ibai-accent-soft); border-radius: var(--ibai-r-xs);
+  padding: 1px 6px; font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .05em; font-weight: 600;
+}
+
+/* ================================================= full workspace (page) */
+
+/* Standalone. The workspace opens in its own tab, like the other ISOFT apps,
+   so the desk chrome goes and the page carries its own brand and its own way
+   back. Every rule is scoped to body.ibai-fullpage: the stylesheet stays in
+   the document after you navigate away, and an unscoped display:none would
+   follow you onto every other desk screen. The class is removed on
+   page-change — on_page_hide never fires in v13. */
+body.ibai-fullpage header.navbar,
+body.ibai-fullpage .navbar.navbar-expand,
+body.ibai-fullpage .navbar.navbar-default.navbar-fixed-top,
+body.ibai-fullpage .navbar-expand-lg,
+body.ibai-fullpage .page-head { display: none !important; }
+
+body.ibai-fullpage .page-container,
+body.ibai-fullpage .main-section,
+body.ibai-fullpage .container,
+body.ibai-fullpage .layout-main-section-wrapper {
+  padding-top: 0 !important; margin-top: 0 !important;
+  padding-left: 0 !important; padding-right: 0 !important;
+  margin-bottom: 0 !important;
+}
+body.ibai-fullpage .layout-main-section {
+  padding: 0 !important; border: none; background: transparent; box-shadow: none;
+}
+/* The desk's .row.layout-main carries Bootstrap's -15px gutters, which the
+   container's padding normally absorbs. Zeroing that padding above exposes
+   them, making the console 30px wider than its container at every width —
+   visible as a horizontal scrollbar on a phone. Named exactly, not `.row`,
+   which would also reach into dialogs. */
+body.ibai-fullpage .row.layout-main { margin-left: 0 !important; margin-right: 0 !important; }
+body.ibai-fullpage #body { padding: 0 !important; }
+body.ibai-fullpage { overflow: hidden; }
+
+body.ibai-fullpage .ibai-console {
+  height: 100vh; border: none; border-radius: 0;
+}
+
+/* --- the page's own identity, in place of the desk header --- */
+.ibai-brand {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: var(--ibai-4) var(--ibai-3) var(--ibai-2);
+  white-space: nowrap; overflow: hidden;
+}
+.ibai-brand-mark {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ibai-accent-line);
+  background: var(--ibai-disc);
+  box-shadow: 0 0 14px -5px var(--ibai-glow);
+}
+.ibai-brand-name {
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.01em;
+  overflow: hidden; text-overflow: ellipsis;
+}
+a.ibai-ico { text-decoration: none !important; }
+
+.ibai-console {
+  display: flex;
+  /* The desk paints a fixed watermark at body::before, z-index 1. An opaque
+     surface is not enough; the console needs its own stacking context. */
+  position: relative; z-index: 2;
+  height: calc(100vh - 130px); min-height: 440px;
+  /* background-color, never the `background` shorthand: the shorthand resets
+     background-image and would silently erase the nebula. */
+  background-color: var(--ibai-surface);
+  background-image: var(--ibai-nebula);
+  background-repeat: no-repeat;
+  color: var(--ibai-text);
+  font-family: var(--ibai-font); font-size: 14px; line-height: 1.6;
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r);
+  overflow: hidden;
+}
+
+.ibai-rail {
+  flex: 0 0 260px; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--ibai-surface-2);
+  border-right: 1px solid var(--ibai-line);
+  transition: flex-basis var(--ibai-ms) ease;
+}
+.ibai-console.rail-collapsed .ibai-rail { flex-basis: 0; border-right: none; overflow: hidden; }
+.ibai-rail-top {
+  flex: 0 0 auto; display: flex; gap: var(--ibai-2);
+  padding: var(--ibai-3); border-bottom: 1px solid var(--ibai-line-soft);
+}
+.ibai-new {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px var(--ibai-3);
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  background: var(--ibai-surface-3); color: var(--ibai-text);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color var(--ibai-ms) ease;
+}
+.ibai-new:hover { border-color: var(--ibai-accent-line); }
+
+.ibai-console .ibai-main {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column;
+  background: transparent;   /* the console carries the nebula */
+}
+.ibai-main-top {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--ibai-2);
+  padding: var(--ibai-2) var(--ibai-4);
+  border-bottom: 1px solid var(--ibai-line); background: var(--ibai-surface-2);
+}
+.ibai-main-title {
+  flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Which data the answers are drawn from — the context indicator. */
+.ibai-scope { flex: 0 0 auto; min-width: 0; max-width: 40%; }
+.ibai-scope[hidden] { display: none; }
+.ibai-scope .ibai-context-chip { font-size: 11px; padding: 2px 10px; }
+.ibai-console .ibai-body { position: relative; }
+.ibai-console .ibai-stream { padding: var(--ibai-6) var(--ibai-6) var(--ibai-3); }
+
+/* One readable column; wide results may break out. */
+.ibai-console .ibai-turn,
+.ibai-console .ibai-welcome,
+.ibai-console .ibai-fail { max-width: 820px; margin-left: auto; margin-right: auto; }
+.ibai-console .ibai-turn { margin-bottom: var(--ibai-6); }
+/* A wide result is anchored to the reading column's left edge, so lifting its
+   max-width alone still leaves it starting 260px in. Pull it out both ways on
+   screens with room, which is what makes an eight-column balancete readable
+   without scrolling sideways to the columns that matter. */
+.ibai-console .ibai-result.is-wide { max-width: none; }
+@media (min-width: 1300px) {
+  .ibai-console .ibai-result.is-wide { margin-left: -150px; margin-right: -150px; }
+}
+@media (min-width: 1650px) {
+  .ibai-console .ibai-result.is-wide { margin-left: -260px; margin-right: -260px; }
+}
+/* In a wide table the numbers are the point, so a long label gives way to them
+   rather than pushing them off the screen. The full text is in the cell's
+   title. */
+.ibai-console .ibai-result.is-wide .ibai-table td:not(.ibai-num) {
+  max-width: 290px; overflow: hidden; text-overflow: ellipsis;
+}
+.ibai-console .ibai-table-wrap { max-height: 460px; }
+.ibai-console .ibai-composer { padding: var(--ibai-3) var(--ibai-6) var(--ibai-4); }
+.ibai-console .ibai-field,
+.ibai-console .ibai-foot { max-width: 820px; margin-left: auto; margin-right: auto; }
+
+.ibai-notice {
+  max-width: 820px; margin: var(--ibai-4) auto 0;
+  background: var(--ibai-warn-soft); border: 1px solid var(--ibai-warn);
+  color: var(--ibai-text); border-radius: var(--ibai-r-sm);
+  padding: 9px var(--ibai-3); font-size: 12.5px;
+}
+.ibai-notice a { color: var(--ibai-warn); text-decoration: underline; font-weight: 600; }
+
+.ibai-tools-dlg ul { padding-left: 18px; margin: 0 0 var(--ibai-3); }
+.ibai-tools-dlg li { margin-bottom: 5px; font-size: 12.5px; }
+.ibai-tools-dlg code { font-family: var(--ibai-mono); font-size: 11.5px; }
+
+/* ------------------------------------------------------- small screens */
+
+@media (max-width: 768px) {
+  .ibai-panel {
+    width: 100% !important; min-width: 0; max-width: none;
+    border-left: none;
+  }
+  .ibai-grip { display: none; }
+  .ibai-launcher { right: var(--ibai-4); bottom: var(--ibai-4); }
+}
+
+@media (max-width: 992px) {
+  .ibai-console { height: auto; flex-direction: column; }
+  .ibai-rail {
+    flex: 0 0 auto; border-right: none;
+    border-bottom: 1px solid var(--ibai-line); max-height: 230px;
+  }
+  .ibai-console.rail-collapsed .ibai-rail { display: none; }
+  .ibai-console .ibai-stream { max-height: 54vh; padding: var(--ibai-4); }
+  .ibai-console .ibai-composer { padding: var(--ibai-3) var(--ibai-4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ibai-panel, .ibai-launcher, .ibai-rail, .ibai-card, .ibai-starter,
+  .ibai-turn-tools, .ibai-send, .ibai-field, .ibai-galaxy-disc { transition: none; }
+  .ibai-dot { animation: none; }
+}
+
+@media print { .ibai-launcher, .ibai-panel { display: none !important; } }
+
+/* ===================================================== usage console (page) */
+/* Reuses the assistant's console shell; only the page's own blocks are here. */
+
+.ibu .ibai-main-title { flex: 0 0 auto; }
+.ibu-mark { flex: 0 0 auto; width: 26px; height: 26px; }
+.ibu-ranges { flex: 1 1 auto; display: flex; gap: var(--ibai-1); justify-content: flex-end; }
+.ibu-range {
+  background: transparent; border: 1px solid var(--ibai-line);
+  color: var(--ibai-text-2); border-radius: var(--ibai-r-xs);
+  padding: 3px 10px; font-size: 12px; cursor: pointer;
+}
+.ibu-range:hover { border-color: var(--ibai-accent-line); color: var(--ibai-text); }
+.ibu-range.active {
+  background: var(--ibai-accent-soft); border-color: var(--ibai-accent-line);
+  color: var(--ibai-text); font-weight: 600;
+}
+
+.ibu-body { padding: var(--ibai-5) var(--ibai-6) var(--ibai-6); }
+.ibu-body .ibu-sec,
+.ibu-body .ibu-tiles { max-width: 1180px; margin-left: auto; margin-right: auto; }
+.ibu-loading, .ibu-empty {
+  padding: var(--ibai-6); text-align: center; color: var(--ibai-text-3); font-size: 13px;
+}
+
+.ibu-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--ibai-2); }
+.ibu-tile {
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); padding: var(--ibai-3) var(--ibai-4); min-width: 0;
+}
+.ibu-tile .k {
+  font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ibai-text-3); font-family: var(--ibai-mono);
+}
+.ibu-tile .v {
+  font-size: 20px; font-weight: 700; margin-top: 3px;
+  font-variant-numeric: tabular-nums; letter-spacing: -.015em;
+}
+.ibu-tile .n { font-size: 11px; color: var(--ibai-text-2); margin-top: 3px; line-height: 1.45; }
+.ibu-tile.ok { border-left: 3px solid var(--ibai-ok); }
+.ibu-tile.ok .v { color: var(--ibai-ok); }
+.ibu-tile.stop { border-left: 3px solid var(--ibai-danger); }
+.ibu-tile.stop .v { color: var(--ibai-danger); }
+.ibu-warn, .ibu-note {
+  grid-column: 1 / -1; font-size: 12px; border-radius: var(--ibai-r-sm);
+  padding: 8px var(--ibai-3);
+}
+.ibu-warn { background: var(--ibai-warn-soft); border: 1px solid var(--ibai-warn); }
+.ibu-note { color: var(--ibai-text-3); }
+
+.ibu-sec { margin-top: var(--ibai-6); }
+.ibu-sec-head { display: flex; align-items: baseline; gap: var(--ibai-3); margin-bottom: var(--ibai-2); flex-wrap: wrap; }
+.ibu-sec-head h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.ibu-sec-head .note { font-size: 12px; color: var(--ibai-text-3); }
+
+/* Plain CSS bars: a charting library here would animate inside a resizing
+   container, which is exactly what makes frappe-charts throw. */
+.ibu-chart {
+  display: flex; align-items: flex-end; justify-content: flex-start;
+  gap: 4px; height: 130px;
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); padding: var(--ibai-3); overflow-x: auto;
+}
+/* Capped, or a window with four busy days draws four slabs instead of a chart. */
+.ibu-bar {
+  flex: 1 1 14px; max-width: 46px; min-width: 14px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  align-items: center; height: 100%; gap: 4px;
+}
+.ibu-bar > span {
+  width: 100%; background: var(--ibai-accent); border-radius: 3px 3px 0 0;
+  min-height: 2px; opacity: .85;
+}
+.ibu-bar:hover > span { opacity: 1; }
+.ibu-bar > i {
+  font-style: normal; font-size: 8.5px; color: var(--ibai-text-3);
+  font-family: var(--ibai-mono); white-space: nowrap;
+}
+
+.ibu-form {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--ibai-3);
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); padding: var(--ibai-4);
+}
+.ibu-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ibu-field > span { font-size: 12px; color: var(--ibai-text-2); }
+.ibu-field > i { font-style: normal; font-size: 11px; color: var(--ibai-text-3); }
+.ibu-field input[type="number"] {
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-xs);
+  background: var(--ibai-surface); color: var(--ibai-text);
+  padding: 7px 10px; font-size: 13px; font-family: var(--ibai-mono); width: 100%;
+}
+.ibu-field input[type="number"]:focus { outline: none; border-color: var(--ibai-accent-line); }
+.ibu-switch { flex-direction: row; align-items: center; gap: var(--ibai-2); }
+.ibu-switch input { width: 16px; height: 16px; }
+.ibu-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--ibai-3); }
+.ibu-save {
+  background: var(--ibai-accent); color: #fff; border: none;
+  border-radius: var(--ibai-r-xs); padding: 7px 16px; font-size: 13px;
+  font-weight: 600; cursor: pointer;
+}
+.ibu-save:hover:not(:disabled) { background: var(--ibai-accent-hover); }
+.ibu-save:disabled { opacity: .5; cursor: default; }
+.ibu-saved { font-size: 12px; color: var(--ibai-ok); opacity: 0; transition: opacity var(--ibai-ms); }
+.ibu-saved.is-on { opacity: 1; }
+
+.ibu-convos { display: grid; gap: 3px; }
+.ibu-convo {
+  display: grid; grid-template-columns: 1fr 180px 92px 120px 86px; gap: var(--ibai-3);
+  align-items: center; text-align: left;
+  background: var(--ibai-surface-2); border: 1px solid var(--ibai-line);
+  border-radius: var(--ibai-r-sm); padding: 8px var(--ibai-3);
+  color: var(--ibai-text); font-size: 12.5px; cursor: pointer;
+}
+.ibu-convo:hover { border-color: var(--ibai-accent-line); }
+.ibu-convo .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibu-convo .u { color: var(--ibai-text-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibu-convo .q, .ibu-convo .k, .ibu-convo .c {
+  text-align: right; font-family: var(--ibai-mono); font-size: 11.5px;
+  font-variant-numeric: tabular-nums; color: var(--ibai-text-2);
+}
+.ibu-convo .c { color: var(--ibai-text); font-weight: 600; }
+@media (max-width: 900px) {
+  .ibu-convo { grid-template-columns: 1fr 86px; }
+  .ibu-convo .u, .ibu-convo .q, .ibu-convo .k { display: none; }
+}
+
+.ibu-transcript { max-height: 62vh; overflow-y: auto; }
+.ibu-tmeta { font-size: 11.5px; color: var(--text-muted, #6b7a8c); margin-bottom: 10px; }
+.ibu-turn { border-left: 3px solid var(--border-color, #d8dfe7); padding: 6px 0 6px 12px; margin-bottom: 12px; }
+.ibu-turn.r-user { border-left-color: #2490ef; }
+.ibu-turn .who {
+  font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted, #6b7a8c); margin-bottom: 3px;
+}
+.ibu-turn .body { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.ibu-turn .tools, .ibu-turn .cost {
+  font-size: 11px; color: var(--text-muted, #6b7a8c); margin-top: 5px;
+  font-family: var(--ibai-mono);
+}

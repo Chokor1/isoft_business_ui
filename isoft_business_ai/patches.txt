@@ -1,0 +1,1 @@
+isoft_business_ai.patches.ensure_business_ai_role
