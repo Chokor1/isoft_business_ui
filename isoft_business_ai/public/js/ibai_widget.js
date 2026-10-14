@@ -151,18 +151,27 @@ isoft_business_ai.Widget = class Widget {
 		});
 
 		// Clicking away closes it, like every other overlay in the desk.
+		//
 		// mousedown, not click: a click that began inside the panel and ended
 		// outside it - dragging to select an answer - must not count as away.
 		// The launcher is excluded because its own handler already toggles,
 		// and a Frappe dialog opened from the panel counts as inside.
-		$(document).on('mousedown.ibaiaway', e => {
+		//
+		// Capture phase, which is why this is addEventListener and not jQuery.
+		// The menus inside the composer act on mousedown and empty themselves,
+		// so by the time a bubbling handler runs, the row that was clicked is
+		// already detached - and closest() on a detached node finds nothing,
+		// which read as a click outside and closed the panel every time a
+		// mention was picked.
+		document.addEventListener('mousedown', e => {
 			if (!this.open) return;
-			if ($(e.target).closest(
-				'.ibai-panel, .ibai-launcher, .modal, .modal-backdrop, .ibai-menu').length) {
+			const el = e.target;
+			if (el && el.closest && el.closest(
+				'.ibai-panel, .ibai-launcher, .modal, .modal-backdrop, .ibai-menu')) {
 				return;
 			}
 			this.toggle(false);
-		});
+		}, true);
 
 		// Escape dismisses one layer at a time: an open row menu, then the
 		// history drawer, then the panel itself.
