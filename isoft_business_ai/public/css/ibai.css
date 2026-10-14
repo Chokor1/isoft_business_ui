@@ -594,6 +594,33 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
   background: var(--ibai-surface-4); border-radius: 99px;
   border: 3px solid transparent; background-clip: padding-box;
 }
+/* Pictures and files belonging to a document. Thumbnails are capped rather
+   than stretched: an ERP holds anything from a 60px icon to a 4000px photo. */
+.ibai-media {
+  display: flex; flex-wrap: wrap; gap: var(--ibai-2);
+  margin: var(--ibai-3) 0 0;
+}
+.ibai-media-img {
+  display: block; line-height: 0;
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  background: var(--ibai-surface-2); padding: 3px;
+  transition: border-color var(--ibai-ms) ease;
+}
+.ibai-media-img:hover { border-color: var(--ibai-accent-line); }
+.ibai-media-img img {
+  display: block; max-width: 148px; max-height: 148px;
+  width: auto; height: auto; border-radius: calc(var(--ibai-r-sm) - 2px);
+  object-fit: contain;
+}
+.ibai-media-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r-sm);
+  background: var(--ibai-surface-2); color: var(--ibai-text-2);
+  padding: 6px var(--ibai-2); font-size: 12px; text-decoration: none;
+}
+.ibai-media-file:hover { border-color: var(--ibai-accent-line); color: var(--ibai-text); }
+.ibai-media-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .ibai-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
 
 /* Spreadsheet grid. Finance reads these tables the way they read a sheet, so

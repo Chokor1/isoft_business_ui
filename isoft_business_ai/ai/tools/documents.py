@@ -13,8 +13,11 @@ from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 @ai_tool(
     name="read_document",
     description=(
-        "Open one named business document and read its header fields and lines — "
-        "a quotation, order, invoice, delivery note, stock entry, payment and so on. "
+        "Open one named business document and read its header fields, its lines, and "
+        "any pictures or files attached to it — a quotation, order, invoice, delivery "
+        "note, stock entry, payment, an item, a customer and so on. This is also how you "
+        "show a product photo that is stored in the ERP: call it and the picture is "
+        "displayed with your answer. "
         "Use when the user mentions a specific document, or refers to 'this quotation' "
         "or 'the open invoice'. The document the user is viewing is supplied to you "
         "automatically when they mention it."
@@ -39,9 +42,11 @@ def read_document(doctype, name, linhas=12):
                 "doctype": doctype, "name": summary["name"]}],
         columns=[text(c, c.replace("_", " ").title()) for c in cols],
         rows=rows,
-        source="%s %s (%s)" % (doctype, summary["name"], summary.get("docstatus")),
+        source=("%s %s (%s)" % (doctype, summary["name"], summary["docstatus"])
+                if summary.get("docstatus") else "%s %s" % (doctype, summary["name"])),
         filters_applied={"doctype": doctype, "name": name},
         header=summary.get("fields"),
+        media=summary.get("media"),
         note=lines.get("note"),
     )
 

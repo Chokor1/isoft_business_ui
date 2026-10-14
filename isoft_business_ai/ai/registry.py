@@ -30,7 +30,13 @@ class ToolResult(object):
     """
 
     def __init__(self, columns, rows, source, filters_applied=None, note=None,
-                 header=None, links=None, aux=False):
+                 header=None, links=None, aux=False, media=None):
+        # ``media`` carries pictures and files that belong to a document:
+        # [{kind, name, url}]. The browser shows them; the model is told only
+        # that they exist and what they are called. URLs stay out of its
+        # context for the same reason ``links`` does - given one, it will
+        # eventually write a slightly different one into prose.
+        self.media = media or []
         # ``aux`` marks a result the model needed but the reader did not ask
         # for - resolving a half-remembered name to a code, say. The model still
         # gets it and the step still shows in the provenance strip, but the
@@ -67,6 +73,7 @@ class ToolResult(object):
             "note": self.note,
             "truncated": self.truncated,
             "aux": self.aux,
+            "media": self.media,
         }
 
     def for_model(self):
@@ -90,6 +97,13 @@ class ToolResult(object):
             payload["header"] = self.header
         if self.note:
             payload["note"] = self.note
+        if self.media:
+            payload["media"] = [{"kind": m.get("kind"), "name": m.get("name")}
+                                for m in self.media]
+            payload["note_media"] = (
+                "%d file(s) belong to this document and are already displayed to the user "
+                "beneath your answer. Say what they are; never write out a URL or claim you "
+                "cannot show a picture." % len(self.media))
         if not self.rows:
             payload["empty"] = (
                 "No rows matched. Check whether the filters are too narrow, the date range is "

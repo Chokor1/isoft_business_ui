@@ -10,6 +10,8 @@ DocType's own metadata rather than dumping the record, so a 200-field invoice
 costs a few hundred tokens instead of several thousand.
 """
 
+import os
+
 import frappe
 from frappe import _
 
@@ -35,6 +37,9 @@ SKIP_FIELDTYPES = {
     "Attach", "Attach Image", "Text Editor", "Code", "Signature", "Fold",
     "Heading", "Barcode", "Geolocation", "HTML Editor", "Markdown Editor",
 }
+
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".bmp")
+MAX_MEDIA = 8
 
 MAX_HEADER_FIELDS = 18
 MAX_CHILD_ROWS = 12
@@ -80,6 +85,82 @@ def _header_fields(meta):
     return (preferred + other)[:MAX_HEADER_FIELDS]
 
 
+def _file_is_there(url):
+    """Whether a site file actually exists on disk.
+
+    File rows outlive their files: this site has Items whose stored picture is
+    a 404. Offering one anyway makes the assistant say "here is the picture"
+    over an empty box, which is worse than saying there is none.
+    """
+    if not url or not url.startswith("/"):
+        return bool(url)          # an external URL is not ours to verify
+    try:
+        clean = url.split("?")[0].split("#")[0].lstrip("/")
+        if clean.startswith("private/"):
+            path = frappe.get_site_path(clean)
+        else:
+            path = frappe.get_site_path("public", clean)
+        return os.path.exists(path)
+    except Exception:
+        return False
+
+
+def _media_for(doctype, name, doc, meta):
+    """Pictures and files that belong to this document.
+
+    Two places hold them and both matter: a picture chosen on the form sits in
+    an Image/Attach field, while anything dragged onto the sidebar is a File
+    row pointing back here. Without this the assistant answered "I cannot
+    retrieve or display the item image with the available tools" for an item
+    whose picture was right there on the form.
+
+    frappe.get_all, deliberately: File's own permission rules are derived from
+    whatever it is attached to, and the caller has already checked read
+    permission on that document. Fetching the file itself is checked again by
+    Frappe when the browser asks for it.
+    """
+    media, seen = [], set()
+
+    def add(kind, label, url):
+        if not url or url in seen:
+            return
+        seen.add(url)
+        if not _file_is_there(url):
+            return
+        media.append({"kind": kind, "name": label, "url": url})
+
+    for df in meta.fields:
+        if df.fieldtype not in ("Image", "Attach Image", "Attach"):
+            continue
+        value = doc.get(df.fieldname)
+        if not value or not isinstance(value, str):
+            continue
+        kind = "image" if (df.fieldtype in ("Image", "Attach Image")
+                           or value.lower().endswith(IMAGE_SUFFIXES)) else "file"
+        add(kind, df.label or df.fieldname, value)
+
+    try:
+        rows = frappe.get_all(
+            "File",
+            filters={"attached_to_doctype": doctype, "attached_to_name": name},
+            fields=["file_name", "file_url"],
+            order_by="creation desc",
+            limit_page_length=MAX_MEDIA * 2)
+    except Exception:
+        rows = []
+    for r in rows:
+        url = r.get("file_url")
+        if not url:
+            continue
+        kind = "image" if url.lower().endswith(IMAGE_SUFFIXES) else "file"
+        add(kind, r.get("file_name") or url.rsplit("/", 1)[-1], url)
+
+    # Pictures first: a question about a document is far more often "what does
+    # it look like" than "what is attached to it".
+    media.sort(key=lambda m: 0 if m["kind"] == "image" else 1)
+    return media[:MAX_MEDIA]
+
+
 def summarise(doctype, name, child_rows=MAX_CHILD_ROWS):
     """A compact, permission-checked view of one document."""
     if not is_business_doctype(doctype):
@@ -99,13 +180,26 @@ def summarise(doctype, name, child_rows=MAX_CHILD_ROWS):
             continue
         header[df.label or df.fieldname] = value
 
+    # Only a submittable DocType has a draft/submitted/cancelled state. Reading
+    # docstatus off one that is not made every Item, Customer and Supplier come
+    # back as "Draft", and the assistant duly reported a cataloguing item as
+    # "Draft (not yet submitted/active)", which is not a thing.
+    submittable = bool(meta.is_submittable)
+    docstatus = DOCSTATUS.get(int(doc.get("docstatus") or 0)) if submittable else None
+
     out = {
         "doctype": doctype,
         "name": doc.name,
-        "status": doc.get("status") or DOCSTATUS.get(int(doc.get("docstatus") or 0)),
-        "docstatus": DOCSTATUS.get(int(doc.get("docstatus") or 0)),
         "fields": header,
+        "media": _media_for(doctype, name, doc, meta),
     }
+    status = doc.get("status") or docstatus
+    if status:
+        out["status"] = status
+    if docstatus:
+        out["docstatus"] = docstatus
+    if not submittable and doc.get("disabled"):
+        out["status"] = "Disabled"
 
     # Only the first child table: it is the one that carries the lines.
     table_fields = [f for f in meta.fields if f.fieldtype == "Table"]

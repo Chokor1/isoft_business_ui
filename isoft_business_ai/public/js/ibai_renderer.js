@@ -309,6 +309,39 @@ IBAI.render_result = function (res, opts) {
 		$wrap.append($dl);
 	}
 
+	// Pictures and files that belong to the document. The model never gets
+	// these URLs; it is only told the files exist, so it describes them while
+	// the browser is what actually shows them.
+	if ((res.media || []).length) {
+		const $media = $('<div class="ibai-media"></div>');
+		res.media.forEach(m => {
+			// Only site-relative or http(s) URLs are ever followed: these
+			// strings come out of the database, and a stored "javascript:..."
+			// must not become a live link.
+			const url = String(m.url || '');
+			if (!/^(https?:\/\/|\/)/.test(url)) return;
+			const name = m.name || url.split('/').pop();
+			if (m.kind === 'image') {
+				const $a = $('<a class="ibai-media-img" target="_blank" rel="noopener"></a>')
+					.attr('href', url).attr('title', name);
+				$('<img>').attr('src', url).attr('alt', name)
+					.attr('loading', 'lazy')
+					// A dead file path should leave no broken-image icon.
+					.on('error', function () { $(this).closest('.ibai-media-img').remove(); })
+					.appendTo($a);
+				$media.append($a);
+			} else {
+				const $a = $('<a class="ibai-media-file" target="_blank" rel="noopener"></a>')
+					.attr('href', url);
+				$a.append(IBAI.icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+					'<path d="M14 2v6h6"/>', 13));
+				$('<span></span>').text(name).appendTo($a);
+				$media.append($a);
+			}
+		});
+		if ($media.children().length) $wrap.append($media);
+	}
+
 	if (rows.length) {
 		const head = columns.map((c, i) =>
 			'<th class="' + (IBAI.is_numeric(c) ? 'ibai-num' : '') +
