@@ -33,18 +33,18 @@ isoft_business_ai.Widget = class Widget {
 		// this would land on top of the composer's send button.
 		this.$launcher = $(
 			'<button class="ibai-launcher" aria-expanded="false" aria-label="' +
-			__('Business Assistant') + '">' +
+			__('ISOFT Business Assistant') + '">' +
 			isoft_business_ai.galaxy(34) +
 			'</button>'
 		).appendTo(document.body);
 
 		this.$panel = $(
-			'<aside class="ibai-panel" role="complementary" aria-label="' + __('Business Assistant') + '">' +
+			'<aside class="ibai-panel" role="complementary" aria-label="' + __('ISOFT Business Assistant') + '">' +
 				'<button class="ibai-grip" aria-label="' + __('Resize panel') + '" tabindex="-1"></button>' +
 
 				'<header class="ibai-head">' +
 					'<span class="ibai-head-mark">' + isoft_business_ai.galaxy(20) + '</span>' +
-					'<div class="ibai-head-name">' + __('Business Assistant') + '</div>' +
+					'<div class="ibai-head-name">' + __('ISOFT Business Assistant') + '</div>' +
 					'<nav class="ibai-head-actions">' +
 						'<button class="ibai-ico ibai-act-new" aria-label="' + __('New chat') + '" title="' + __('New chat') + '">' + ico('<path d="M12 5v14M5 12h14"/>') + '</button>' +
 						'<button class="ibai-ico ibai-act-history" aria-label="' + __('History') + '" title="' + __('History') + '">' + ico('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') + '</button>' +

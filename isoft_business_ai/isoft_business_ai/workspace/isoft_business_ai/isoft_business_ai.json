@@ -26,7 +26,7 @@
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Business Assistant",
+   "label": "ISOFT Business Assistant",
    "link_to": "business-assistant",
    "link_type": "Page",
    "onboard": 1,
@@ -77,7 +77,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-09-08 13:00:00.000000",
+ "modified": "2026-10-14 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Isoft Business AI",
  "name": "Isoft Business AI",
@@ -88,7 +88,7 @@
  "shortcuts": [
   {
    "color": "Blue",
-   "label": "Business Assistant",
+   "label": "ISOFT Business Assistant",
    "link_to": "business-assistant",
    "type": "Page"
   },

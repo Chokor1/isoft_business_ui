@@ -751,6 +751,24 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 .ibai-result.is-sheet.pin-2 .ibai-table .ibai-pin-1 {
   box-shadow: 1px 0 0 var(--ibai-line), 6px 0 8px -6px rgba(0, 0, 0, .18);
 }
+/* Set by the renderer when the frozen block would not leave enough room to
+   read what scrolls under it: the columns stay, they just stop being frozen. */
+.ibai-result.is-sheet.unpin-1 .ibai-table .ibai-pin-1,
+.ibai-result.is-sheet.unpin-all .ibai-table .ibai-pin {
+  position: static; box-shadow: none;
+}
+.ibai-result.is-sheet.unpin-1 .ibai-table .ibai-pin-0 {
+  box-shadow: 1px 0 0 var(--ibai-line), 6px 0 8px -6px rgba(0, 0, 0, .18);
+}
+.ibai-result.is-sheet.unpin-all .ibai-table .ibai-pin-0 { box-shadow: none; }
+
+/* One long value must not take the whole table with it: an account name ran
+   to 402px and squeezed six other columns out of the view. Truncated with the
+   full text still on the cell's title. */
+.ibai-table td, .ibai-table th {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+}
+.ibai-table td.ibai-num, .ibai-table th.ibai-num { max-width: none; }
 
 .ibai-result.is-sheet .ibai-table tbody tr:nth-child(even) .ibai-pin {
   background: linear-gradient(var(--ibai-band), var(--ibai-band)), var(--ibai-surface-2);

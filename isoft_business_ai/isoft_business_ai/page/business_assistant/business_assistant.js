@@ -12,7 +12,7 @@
 frappe.pages['business-assistant'].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
 		parent: wrapper,
-		title: __('Business Assistant'),
+		title: __('ISOFT Business Assistant'),
 		single_column: true,
 	});
 	frappe.pages['business-assistant'].instance = new BusinessAIPage(page);
@@ -60,7 +60,7 @@ class BusinessAIPage {
 				'<aside class="ibai-rail">' +
 					'<div class="ibai-brand">' +
 						'<span class="ibai-brand-mark">' + isoft_business_ai.galaxy(22) + '</span>' +
-						'<span class="ibai-brand-name">' + __('Business Assistant') + '</span>' +
+						'<span class="ibai-brand-name">' + __('ISOFT Business Assistant') + '</span>' +
 					'</div>' +
 					'<div class="ibai-rail-top">' +
 						'<button class="ibai-new">' +

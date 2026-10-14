@@ -260,11 +260,35 @@ IBAI.render_steps = function (results) {
  * A placeholder that describes the scope reads well on a desktop and gets cut
  * in half on a phone, so the narrow screen gets a short one instead.
  */
-IBAI.fitPlaceholder = function ($input, long, short) {
-	const apply = () => $input.attr('placeholder',
-		window.innerWidth < 620 ? short : long);
+/**
+ * The invitation in the empty box, which is the only instruction most people
+ * will read. Naming the things it can be asked about beats "ask a question",
+ * and a part number nobody recognises is the one that sends it looking outside
+ * the ERP, so it earns its place in the list.
+ *
+ * The wording lives here, not at the two call sites, because one of them is a
+ * desk Page script that browsers cache with no version check - a change there
+ * can sit unshipped for weeks. The arguments are accepted and ignored.
+ */
+IBAI.PLACEHOLDER = {
+	long: 'Ask about sales, stock, money, a document, or an item you don\u2019t recognise\u2026',
+	short: 'Ask about your business\u2026',
+};
+IBAI.fitPlaceholder = function ($input) {
+	// Measured against the box it has to fit, not the window: the quick panel
+	// is narrow on the widest screen, and the long version wrapped onto a
+	// second line there and was clipped by the composer's height.
+	const apply = () => {
+		const room = $input.outerWidth() || window.innerWidth;
+		$input.attr('placeholder', room < 420
+			? __(IBAI.PLACEHOLDER.short) : __(IBAI.PLACEHOLDER.long));
+	};
 	apply();
 	$(window).on('resize.ibaiph', apply);
+	try {
+		// The panel can be dragged wider, which no window event reports.
+		new ResizeObserver(apply).observe($input[0]);
+	} catch (e) { /* the window handler still covers the common case */ }
 };
 
 /* ------------------------------------------------------------------ results */
@@ -399,20 +423,45 @@ IBAI.render_result = function (res, opts) {
 		);
 		// The second pinned column has to sit exactly at the first one's right
 		// edge, which is only knowable once the browser has laid the table out.
-		// A ResizeObserver covers both the first layout and any later reflow.
-		if (pinned > 1) {
+		// The same measurement decides whether pinning is affordable at all:
+		// a general ledger pins Date and Account, and Account alone came to
+		// 402px, so in the quick panel the two frozen columns were wider than
+		// the panel and left the other six nothing - the complaint was that
+		// everything except the frozen pair was too narrow to read.
+		if (pinned > 0) {
 			const table = $wrap.find('.ibai-table')[0];
-			const place = () => {
+			const wrapEl = $wrap.find('.ibai-table-wrap')[0];
+			const fit = () => {
 				const first = table.querySelector('thead th.ibai-pin-0');
 				if (!first || !first.offsetWidth) return;
 				table.style.setProperty('--ibai-pin-1', first.offsetWidth + 'px');
+
+				const visible = wrapEl.clientWidth;
+				if (!visible) return;
+				const widthOf = n => {
+					const th = table.querySelector('thead th.ibai-pin-' + n);
+					return th ? th.offsetWidth : 0;
+				};
+				// Over this much of the view and the frozen block stops being a
+				// help: what scrolls under it has no room to show anything.
+				const budget = visible * 0.55;
+				let keep = pinned;
+				while (keep > 0) {
+					let used = 0;
+					for (let n = 0; n < keep; n++) used += widthOf(n);
+					if (used <= budget) break;
+					keep--;
+				}
+				$wrap.toggleClass('unpin-1', pinned > 1 && keep < 2);
+				$wrap.toggleClass('unpin-all', keep < 1);
 			};
-			place();
+			fit();
 			if (window.ResizeObserver) {
-				const ro = new ResizeObserver(place);
+				const ro = new ResizeObserver(fit);
 				ro.observe(table);
+				if (wrapEl) ro.observe(wrapEl);
 			} else {
-				$(window).on('resize.ibaipin', place);
+				$(window).on('resize.ibaipin', fit);
 			}
 		}
 	}
@@ -1068,6 +1117,20 @@ IBAI.typeahead = function ($input, $anchor, onPick) {
 		}
 	});
 
+	// Submitting takes the question away, so the suggestions for it go too.
+	// Bound after the handler above, so when that one picks a suggestion it
+	// stops the event and this never runs; when nothing is selected it falls
+	// through to the surface's own send, and the menu closes with it.
+	//
+	// Done here rather than in each surface's send(): one of them ships in a
+	// desk Page script that browsers cache with no version check.
+	$input.on('keydown', e => {
+		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+			close();
+		}
+	});
+	$anchor.on('mousedown', '.ibai-send', close);
+
 	// No eager fetch: the briefing has almost certainly filled the cache by the
 	// time anyone types, and a miss costs one call on the first keystroke.
 	return { close, refresh };
@@ -1235,7 +1298,7 @@ IBAI.helpSections = function () {
 
 IBAI.helpPanel = function (onClose) {
 	const $panel = $('<aside class="ibai-help" role="dialog" aria-label="' +
-		IBAI.esc(__('About the Business Assistant')) + '"></aside>');
+		IBAI.esc(__('About the ISOFT Business Assistant')) + '"></aside>');
 	const $top = $('<div class="ibai-help-top"></div>').appendTo($panel);
 	$('<span class="ibai-help-mark"></span>').html(IBAI.galaxy(18)).appendTo($top);
 	$('<span class="ibai-help-title"></span>').text(__('How to use this')).appendTo($top);
