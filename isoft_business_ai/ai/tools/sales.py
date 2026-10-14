@@ -10,9 +10,9 @@ import frappe
 from frappe.utils import flt, getdate
 
 from isoft_business_ai.ai.formatting import currency, integer, number, text
-from isoft_business_ai.ai.query import (date_range, describe, fetch, fetch_reference,
-                                       grand_total, grouped_total, page_share, submitted,
-                                       total_note)
+from isoft_business_ai.ai.query import (MAX_REFERENCE_ROWS, date_range, describe, fetch,
+                                        fetch_reference, grand_total, grouped_total,
+                                        page_share, submitted, total_note)
 from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 from isoft_business_ai.ai.security import resolve_company
 
@@ -723,3 +723,131 @@ def _tax_bridge(filters, item_group, tipo_artigo, net_total=0.0):
             "difference of %s which is the tax charged. If the reader has just been "
             "given the invoiced total, say which of the two this is and why they "
             "differ." % (round(invoiced, 2), round(invoiced - net_total, 2)))
+
+
+MAX_PERIOD_COLUMNS = 24
+
+
+@ai_tool(
+    name="vendas_por_artigo_periodo",
+    description=(
+        "Sales of each item broken down by period - a cross-tab with one row per item "
+        "and one column per month, quarter or year. Use whenever both dimensions are "
+        "asked for at once: 'sales by item and month', 'items per month', 'a sales "
+        "report for items per months', 'vendas por artigo e mes', 'quanto vendemos de "
+        "cada artigo em cada mes'. vendas_por_artigo gives items with no period and "
+        "vendas_por_periodo gives periods with no items; neither can answer this, and "
+        "the two cannot be combined by reading them side by side."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "agrupar_por": Param.enum(
+            "Period for the columns: 'mes' (the default), 'trimestre' or 'ano'.",
+            ["mes", "trimestre", "ano"], optional=True),
+        "limite": Param.integer(
+            "How many items to list, the largest first. Default 20.", optional=True),
+        "item_group": Param.text("Restrict to one item group.", optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice", "Sales Invoice Item"],
+    group="vendas",
+)
+def vendas_por_artigo_periodo(from_date, to_date, agrupar_por="mes", limite=20,
+                              item_group=None, company=None):
+    company = resolve_company(company)
+    agrupar_por = agrupar_por or "mes"
+    if agrupar_por not in ("mes", "trimestre", "ano"):
+        frappe.throw("Use agrupar_por mes, trimestre or ano for a cross-tab.")
+
+    periods = _every_period(agrupar_por, from_date, to_date)
+    if len(periods) > MAX_PERIOD_COLUMNS:
+        frappe.throw(
+            "That range is %d %s columns wide, which is unreadable. Narrow the dates "
+            "or group by a longer period." % (len(periods), agrupar_por))
+
+    def label_of(value):
+        day = getdate(value)
+        if agrupar_por == "mes":
+            return "%04d-%02d" % (day.year, day.month)
+        if agrupar_por == "trimestre":
+            return "%04d-T%d" % (day.year, (day.month - 1) // 3 + 1)
+        return str(day.year)
+
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+    if item_group:
+        filters["`tabSales Invoice Item`.item_group"] = item_group
+
+    # Grouped by item and by the plain posting_date, with the bucketing done
+    # here. YEAR(posting_date) cannot be used once the child table is joined:
+    # the query builder qualifies bare columns with the parent table and reads
+    # a function wrapping a qualified one as a doctype name.
+    #
+    # Reference-shaped because the cross-tab has to be built from the whole
+    # set: a capped page would put an item's March in and leave its April out,
+    # and every row total would then be wrong.
+    raw = fetch_reference(
+        "Sales Invoice",
+        fields=["`tabSales Invoice`.posting_date as d",
+                "`tabSales Invoice Item`.item_code as item_code",
+                "`tabSales Invoice Item`.item_name as item_name",
+                "sum(`tabSales Invoice Item`.base_net_amount) as valor"],
+        filters=filters,
+        group_by="`tabSales Invoice Item`.item_code, `tabSales Invoice`.posting_date",
+        extra_doctypes=["Sales Invoice Item"])
+    complete = len(raw) < MAX_REFERENCE_ROWS
+
+    by_item, column_totals = {}, dict((p, 0.0) for p in periods)
+    for r in raw:
+        code = r.get("item_code")
+        if not code:
+            continue
+        label = label_of(r.get("d"))
+        row = by_item.setdefault(code, {
+            "item_code": code, "item_name": r.get("item_name"), "total": 0.0})
+        for p in periods:
+            row.setdefault(p, 0.0)
+        value = flt(r.get("valor"))
+        if label in row:
+            row[label] += value
+            column_totals[label] = column_totals.get(label, 0.0) + value
+        row["total"] += value
+
+    ranked = sorted(by_item.values(), key=lambda r: -r["total"])
+    shown = ranked[: max(1, int(limite or 20))]
+    grand = round(sum(r["total"] for r in ranked), 2)
+
+    # The TOTAL row covers every item, not only the ones listed, so the columns
+    # reconcile with a monthly report asked for on its own.
+    total_row = {"item_code": "TOTAL", "item_name": "All items", "_style": "total",
+                 "total": grand}
+    for p in periods:
+        total_row[p] = round(column_totals.get(p, 0.0), 2)
+    for r in shown:
+        r["total"] = round(r["total"], 2)
+        for p in periods:
+            r[p] = round(r.get(p, 0.0), 2)
+
+    columns = [text("item_code", "Code"), text("item_name", "Item")]
+    columns += [currency(p, p) for p in periods]
+    columns += [currency("total", "Total")]
+
+    note = ("%d items sold in this period, %s net in total. The %d largest are listed; "
+            "the TOTAL row covers all of them, so its columns match a sales-by-period "
+            "report for the same dates. These are line values, NET OF TAX."
+            % (len(ranked), grand, len(shown)))
+    if not complete:
+        note += (" More item/date combinations matched than could be read, so this "
+                 "cross-tab is incomplete - say so and narrow the dates.")
+    note += _tax_bridge(filters, item_group, None, grand)
+
+    return ToolResult(
+        columns=columns,
+        rows=shown + [total_row],
+        source=describe("Sales Invoice Item (submitted invoices)", company,
+                        from_date, to_date,
+                        {"item group": item_group, "columns": agrupar_por}),
+        filters_applied=filters,
+        note=note,
+    )
