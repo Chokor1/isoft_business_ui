@@ -217,6 +217,28 @@
     "to_date": "2026-10-14"
    },
    "note": "Reported in production: every other sales tool groups by customer."
+  },
+  {
+   "id": "EX-V33",
+   "question": "Vendas de todo o ano de 2026, mes a mes",
+   "expected_tool": "vendas_por_periodo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "agrupar_por": "mes"
+   },
+   "note": "Reported in production: 'all the year' is the calendar year, and every month must appear - a month with no invoices is listed as zero, not left out."
+  },
+  {
+   "id": "EX-V34",
+   "question": "Vendas por artigo este ano",
+   "expected_tool": "vendas_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-10-14",
+    "limite": 20
+   },
+   "note": "Reported in production: the item figure is net of tax and the invoiced total is not, so the note has to bridge the two."
   }
  ]
 }

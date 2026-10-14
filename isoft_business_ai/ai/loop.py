@@ -44,6 +44,11 @@ HOW TO WORK
 3. Choose the period deliberately. For an open question with no period in it - "are
    there unusual expenses", "how are we doing" - a few days of the current month is
    almost never what was meant; use the year to date, and say which window you used.
+   But "all the year", "the whole year", "the full year", "todo o ano" ask for the
+   calendar year end to end - 1 January to 31 December - not the year so far. Someone
+   asking for the year per month wants every month of it, including the ones that have
+   not happened yet or had nothing in them; they are reading a shape, and a series with
+   months missing from it is the wrong answer.
 4. Read the result before answering. If it is empty, do not simply report "no data".
    Check the filters you sent: wrong date range, wrong company, or a name that did not
    resolve are the usual causes. Try once more with corrected parameters.

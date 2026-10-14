@@ -167,6 +167,8 @@ def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=
                 "%d of the %d items invoiced were %s; the rest are excluded. %s"
                 % (len(chosen), kind_word, total, len(chosen), len(every), kind_word,
                    page_share(shown, "valor", total)))
+        note += (" These are line values, NET OF TAX. Do not compare them with an "
+                 "invoiced total that includes tax.")
         return ToolResult(
             columns=[text("item_code", "Code"), text("item_name", "Item"),
                      currency("valor", "Value purchased"), number("quantidade", "Quantity")],
@@ -212,6 +214,12 @@ def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=
     _note = ("Grand total over everything these filters match: %s net across %d items. "
              "The table is a capped page of that set - do not add its rows up yourself. %s"
              % (round(_total, 2), _g, page_share(rows, "valor", _total)))
+    # An item figure is net of tax, because tax is charged on the invoice and
+    # not on the line. Asked for a total and then "by item", a reader sees two
+    # different numbers for what looks like the same question - here they
+    # differed by the whole tax charge - so the bridge is stated rather than
+    # left for them to work out.
+    _note += _tax_bridge(filters, item_group, tipo_artigo, _total)
     if not _complete:
         _note += (" More items matched than this total could read, so it is a floor, "
                   "not the full figure.")
@@ -232,3 +240,24 @@ def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=
         filters_applied=filters,
         note=_note,
     )
+
+
+def _tax_bridge(filters, item_group, tipo_artigo, net_total=0.0):
+    """How an item total relates to the invoiced total, in words.
+
+    Only when nothing item-level has been filtered out: otherwise the invoices
+    behind the two figures are not the same set and the sentence would be a
+    lie.
+    """
+    if item_group or tipo_artigo in ("stock", "servico"):
+        return (" This figure is net of tax. An invoiced total including tax is not "
+                "comparable with it, because tax is charged per invoice, not per line.")
+    parent_filters = dict((k, v) for k, v in filters.items() if not k.startswith("`"))
+    invoiced, _count, _groups = grand_total(
+        "Purchase Invoice", parent_filters, "base_grand_total")
+    if not invoiced:
+        return ""
+    return (" This is NET OF TAX. The same invoices come to %s including tax, a "
+            "difference of %s which is the tax charged. If the reader has just been "
+            "given the invoiced total, say which of the two this is and why they "
+            "differ." % (round(invoiced, 2), round(invoiced - net_total, 2)))

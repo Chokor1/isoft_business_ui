@@ -7,7 +7,7 @@ line so the user can see which convention produced the number.
 """
 
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, getdate
 
 from isoft_business_ai.ai.formatting import currency, integer, number, text
 from isoft_business_ai.ai.query import (date_range, describe, fetch, fetch_reference,
@@ -115,6 +115,31 @@ def vendas_total(from_date, to_date, company=None, incluir_devolucoes=True,
     )
 
 
+def _every_period(agrupar_por, from_date, to_date):
+    """Every period label in a range, including the ones with no sales.
+
+    A month with no invoices simply did not come back from a GROUP BY, so a
+    twelve-month request produced ten rows and the reader could not tell a
+    quiet month from a missing one. Asked for "all the year, per month", that
+    is the difference between a complete answer and an incomplete one.
+    """
+    start, end = getdate(from_date), getdate(to_date)
+    out = []
+    if agrupar_por == "mes":
+        y, m = start.year, start.month
+        while (y, m) <= (end.year, end.month):
+            out.append("%04d-%02d" % (y, m))
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    elif agrupar_por == "trimestre":
+        y, q = start.year, (start.month - 1) // 3 + 1
+        while (y, q) <= (end.year, (end.month - 1) // 3 + 1):
+            out.append("%04d-T%d" % (y, q))
+            y, q = (y + 1, 1) if q == 4 else (y, q + 1)
+    elif agrupar_por == "ano":
+        out = [str(y) for y in range(start.year, end.year + 1)]
+    return out
+
+
 @ai_tool(
     name="vendas_por_periodo",
     description=(
@@ -150,17 +175,31 @@ def vendas_por_periodo(from_date, to_date, agrupar_por="mes", company=None, incl
         order_by=spec["order_by"],
     )
 
-    rows = []
+    found = {}
     for r in raw:
-        rows.append({
+        found[spec["label"](r)] = {
             "periodo": spec["label"](r),
             "total": r.get("total"),
             "facturas": r.get("facturas"),
-        })
+        }
+
+    # Periods with nothing in them are listed as zero rather than left out, so
+    # a series has no holes for the reader to misread as missing data.
+    sequence = _every_period(agrupar_por, from_date, to_date)
+    if sequence:
+        rows = [found.get(label, {"periodo": label, "total": 0.0, "facturas": 0})
+                for label in sequence]
+        empty = sum(1 for r in rows if not r["facturas"])
+    else:
+        rows = list(found.values())
+        empty = 0
 
     # The listed rows are a capped page; this total is not.
     _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total")
     _note = total_note(_total, _n, 0, "sales invoices", "")
+    if empty:
+        _note += (" %d of the %d periods shown had no invoices at all; they are listed "
+                  "as zero so the series is complete." % (empty, len(rows)))
 
     return ToolResult(
         columns=[text("periodo", "Period"), currency("total", "Total"), integer("facturas", "Invoices")],
@@ -326,6 +365,8 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=N
                 "%d of the %d items invoiced were %s; the rest are excluded. %s"
                 % (len(chosen), kind_word, total, len(chosen), len(every), kind_word,
                    page_share(shown, "valor", total)))
+        note += (" These are line values, NET OF TAX. Do not compare them with an "
+                 "invoiced total that includes tax.")
         return ToolResult(
             columns=[text("item_code", "Code"), text("item_name", "Item"),
                      currency("valor", "Value sold"), number("quantidade", "Quantity")],
@@ -374,6 +415,12 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=N
     _note = ("Grand total over everything these filters match: %s net across %d items. "
              "The table is a capped page of that set - do not add its rows up yourself. %s"
              % (round(_total, 2), _g, page_share(rows, "valor", _total)))
+    # An item figure is net of tax, because tax is charged on the invoice and
+    # not on the line. Asked for a total and then "by item", a reader sees two
+    # different numbers for what looks like the same question - here they
+    # differed by the whole tax charge - so the bridge is stated rather than
+    # left for them to work out.
+    _note += _tax_bridge(filters, item_group, tipo_artigo, _total)
     if not _complete:
         _note += (" More items matched than this total could read, so it is a floor, "
                   "not the full figure.")
@@ -655,3 +702,24 @@ def vendas_por_utilizador(from_date, to_date, limite=20, ordenar_por="valor", co
         filters_applied=filters,
         note=note,
     )
+
+
+def _tax_bridge(filters, item_group, tipo_artigo, net_total=0.0):
+    """How an item total relates to the invoiced total, in words.
+
+    Only when nothing item-level has been filtered out: otherwise the invoices
+    behind the two figures are not the same set and the sentence would be a
+    lie.
+    """
+    if item_group or tipo_artigo in ("stock", "servico"):
+        return (" This figure is net of tax. An invoiced total including tax is not "
+                "comparable with it, because tax is charged per invoice, not per line.")
+    parent_filters = dict((k, v) for k, v in filters.items() if not k.startswith("`"))
+    invoiced, _count, _groups = grand_total(
+        "Sales Invoice", parent_filters, "base_grand_total")
+    if not invoiced:
+        return ""
+    return (" This is NET OF TAX. The same invoices come to %s including tax, a "
+            "difference of %s which is the tax charged. If the reader has just been "
+            "given the invoiced total, say which of the two this is and why they "
+            "differ." % (round(invoiced, 2), round(invoiced - net_total, 2)))
