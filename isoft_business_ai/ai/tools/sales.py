@@ -745,6 +745,11 @@ MAX_PERIOD_COLUMNS = 24
         "agrupar_por": Param.enum(
             "Period for the columns: 'mes' (the default), 'trimestre' or 'ano'.",
             ["mes", "trimestre", "ano"], optional=True),
+        "medida": Param.enum(
+            "What each cell holds: 'valor' for money sold (the default) or "
+            "'quantidade' for units sold. Use 'quantidade' for 'by qty', 'how many "
+            "did we sell', 'por quantidade'.",
+            ["valor", "quantidade"], optional=True),
         "limite": Param.integer(
             "How many items to list, the largest first. Default 20.", optional=True),
         "item_group": Param.text("Restrict to one item group.", optional=True),
@@ -753,8 +758,8 @@ MAX_PERIOD_COLUMNS = 24
     doctypes=["Sales Invoice", "Sales Invoice Item"],
     group="vendas",
 )
-def vendas_por_artigo_periodo(from_date, to_date, agrupar_por="mes", limite=20,
-                              item_group=None, company=None):
+def vendas_por_artigo_periodo(from_date, to_date, agrupar_por="mes", medida="valor",
+                              limite=20, item_group=None, company=None):
     company = resolve_company(company)
     agrupar_por = agrupar_por or "mes"
     if agrupar_por not in ("mes", "trimestre", "ano"):
@@ -792,7 +797,8 @@ def vendas_por_artigo_periodo(from_date, to_date, agrupar_por="mes", limite=20,
         fields=["`tabSales Invoice`.posting_date as d",
                 "`tabSales Invoice Item`.item_code as item_code",
                 "`tabSales Invoice Item`.item_name as item_name",
-                "sum(`tabSales Invoice Item`.base_net_amount) as valor"],
+                "sum(`tabSales Invoice Item`.%s) as valor"
+                % ("stock_qty" if medida == "quantidade" else "base_net_amount")],
         filters=filters,
         group_by="`tabSales Invoice Item`.item_code, `tabSales Invoice`.posting_date",
         extra_doctypes=["Sales Invoice Item"])
@@ -819,35 +825,49 @@ def vendas_por_artigo_periodo(from_date, to_date, agrupar_por="mes", limite=20,
     grand = round(sum(r["total"] for r in ranked), 2)
 
     # The TOTAL row covers every item, not only the ones listed, so the columns
-    # reconcile with a monthly report asked for on its own.
-    total_row = {"item_code": "TOTAL", "item_name": "All items", "_style": "total",
-                 "total": grand}
-    for p in periods:
-        total_row[p] = round(column_totals.get(p, 0.0), 2)
+    # reconcile with a monthly report asked for on its own. It is money only:
+    # quantities are in each item's own stock unit, so a column adding litres
+    # to pieces to boxes would be a number that means nothing.
+    total_row = None
+    if medida != "quantidade":
+        total_row = {"item_code": "TOTAL", "item_name": "All items", "_style": "total",
+                     "total": grand}
+        for p in periods:
+            total_row[p] = round(column_totals.get(p, 0.0), 2)
     for r in shown:
         r["total"] = round(r["total"], 2)
         for p in periods:
             r[p] = round(r.get(p, 0.0), 2)
 
+    cell = number if medida == "quantidade" else currency
     columns = [text("item_code", "Code"), text("item_name", "Item")]
-    columns += [currency(p, p) for p in periods]
-    columns += [currency("total", "Total")]
+    columns += [cell(p, p) for p in periods]
+    columns += [cell("total", "Total")]
 
-    note = ("%d items sold in this period, %s net in total. The %d largest are listed; "
-            "the TOTAL row covers all of them, so its columns match a sales-by-period "
-            "report for the same dates. These are line values, NET OF TAX."
-            % (len(ranked), grand, len(shown)))
+    if medida == "quantidade":
+        note = ("%d items sold in this period. The %d largest by quantity are listed, "
+                "each in its own stock unit. There is no total row: quantities of "
+                "different items are in different units, so adding them across items "
+                "would mean nothing. Each item's own Total is valid, being one unit."
+                % (len(ranked), len(shown)))
+    else:
+        note = ("%d items sold in this period, %s net in total. The %d largest are "
+                "listed; the TOTAL row covers all of them, so its columns match a "
+                "sales-by-period report for the same dates. These are line values, "
+                "NET OF TAX." % (len(ranked), grand, len(shown)))
     if not complete:
         note += (" More item/date combinations matched than could be read, so this "
                  "cross-tab is incomplete - say so and narrow the dates.")
-    note += _tax_bridge(filters, item_group, None, grand)
+    if medida != "quantidade":
+        note += _tax_bridge(filters, item_group, None, grand)
 
     return ToolResult(
         columns=columns,
-        rows=shown + [total_row],
+        rows=shown + ([total_row] if total_row else []),
         source=describe("Sales Invoice Item (submitted invoices)", company,
                         from_date, to_date,
-                        {"item group": item_group, "columns": agrupar_por}),
+                        {"item group": item_group, "columns": agrupar_por,
+                         "measure": medida or "valor"}),
         filters_applied=filters,
         note=note,
     )
