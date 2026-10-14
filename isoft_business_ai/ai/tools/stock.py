@@ -175,18 +175,27 @@ def stock_valor_total(warehouse=None, por_armazem=False, company=None):
         note = ("%d warehouse(s) hold stock, %s in total. The TOTAL row is the sum over "
                 "every warehouse." % (len(rows) - 1, total))
     else:
-        rows = fetch("Bin", fields=fields, filters=filters)
+        rows = fetch("Bin", fields=fields + ["count(distinct warehouse) as armazens"],
+                     filters=filters)
         columns = [currency("valor_total", "Total stock value"),
                    number("quantidade_total", "Total quantity"),
-                   number("referencias", "Items in stock")]
-        note = ("Aggregated over every item in %d warehouse(s). Ask with por_armazem for "
-                "the split per warehouse." % len(warehouses))
+                   number("referencias", "Items in stock"),
+                   number("armazens", "Warehouses holding stock")]
+        # The count that matters is how many warehouses hold anything, not how
+        # many exist. Reporting the configured count said "Warehouses included:
+        # 14" for a company whose entire stock sits in one of them - and the
+        # assistant's own next answer said so, contradicting itself.
+        holding = int(flt(rows[0].get("armazens"))) if rows else 0
+        note = ("Aggregated over every item. %d of the company's %d warehouse(s) hold "
+                "stock. Ask with por_armazem for the split per warehouse."
+                % (holding, len(warehouses)))
 
     return ToolResult(
         columns=columns,
         rows=rows,
         source=describe("Bin (aggregated over all items)", company,
-                        extra={"warehouse": warehouse, "warehouses": len(warehouses)}),
+                        extra={"warehouse": warehouse,
+                               "warehouses searched": len(warehouses)}),
         filters_applied={"company": company, "warehouse": warehouse,
                          "por_armazem": bool(por_armazem)},
         note=note,

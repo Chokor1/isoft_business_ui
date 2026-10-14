@@ -1,5 +1,7 @@
 """Purchasing tools."""
 
+import frappe
+
 from isoft_business_ai.ai.formatting import currency, integer, number, text
 from isoft_business_ai.ai.query import (date_range, describe, fetch, grand_total,
                                         grouped_total, page_share, submitted, total_note)
@@ -92,6 +94,13 @@ def compras_total(from_date, to_date, por_fornecedor=True, ordenar_por="valor",
         "to_date": Param.date("End date."),
         "limite": Param.integer("How many items to return. Default 20.", optional=True),
         "item_group": Param.text("Filter by item group.", optional=True),
+        "tipo_artigo": Param.enum(
+            "Which kind of item to count: 'todos' (the default), 'stock' for physical "
+            "stocked items only, or 'servico' for services and other non-stock items. "
+            "Use 'stock' for 'physical items', 'artigos fisicos', 'only what we hold in "
+            "stock' - services are often a large share of the value and change the "
+            "ranking completely.",
+            ["todos", "stock", "servico"], optional=True),
         "supplier": Param.text(
             "Restrict to ONE supplier (exact supplier code). Call procurar_fornecedor "
             "first if you only know the name.", optional=True),
@@ -105,7 +114,7 @@ def compras_total(from_date, to_date, por_fornecedor=True, ordenar_por="valor",
     doctypes=["Purchase Invoice", "Purchase Invoice Item"],
     group="compras",
 )
-def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=None,
+def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=None, tipo_artigo=None,
                        ordenar_por="valor", company=None):
     company = resolve_company(company)
     filters = submitted({"company": company})
@@ -114,6 +123,58 @@ def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=
         filters["`tabPurchase Invoice Item`.item_group"] = item_group
     if supplier:
         filters["supplier"] = supplier
+    if tipo_artigo in ("stock", "servico"):
+        # is_stock_item lives on Item, which is not a child table of the
+        # invoice, so the query builder cannot join it - and a backtick
+        # qualified key with an "in" list comes back mis-prefixed. So the whole
+        # ranking is built here instead: read every item invoiced in the period
+        # uncapped, keep the kind that was asked for, and rank what is left.
+        # Only this branch does that; without tipo_artigo nothing changes.
+        every = fetch_reference(
+            "Purchase Invoice",
+            fields=["`tabPurchase Invoice Item`.item_code as item_code",
+                    "`tabPurchase Invoice Item`.item_name as item_name",
+                    "sum(`tabPurchase Invoice Item`.base_net_amount) as valor",
+                    "sum(`tabPurchase Invoice Item`.stock_qty) as quantidade"],
+            filters=filters, group_by="`tabPurchase Invoice Item`.item_code",
+            extra_doctypes=["Purchase Invoice Item"])
+        codes = [r["item_code"] for r in every if r.get("item_code")]
+        keep = set(r["name"] for r in frappe.get_all(
+            "Item", filters={"name": ["in", codes],
+                             "is_stock_item": 1 if tipo_artigo == "stock" else 0},
+            fields=["name"], limit_page_length=0)) if codes else set()
+        chosen = [r for r in every if r["item_code"] in keep]
+
+        kind_word = "stocked" if tipo_artigo == "stock" else "non-stock"
+        if not chosen:
+            return ToolResult(
+                columns=[text("item_code", "Code")], rows=[],
+                source=describe("Purchase Invoice Item (submitted invoices)", company,
+                                from_date, to_date, {"kind": tipo_artigo}),
+                filters_applied=filters,
+                note=("No %s item appears in purchases for this period, so there is "
+                      "nothing to rank. Say that; do not fall back to all items."
+                      % kind_word))
+
+        reverse = not (ordenar_por or "valor").endswith("_asc")
+        key = "quantidade" if (ordenar_por or "").startswith("quantidade") else "valor"
+        chosen.sort(key=lambda r: flt(r.get(key)), reverse=reverse)
+        shown = chosen[: limite or 20]
+        total = round(sum(flt(r.get("valor")) for r in chosen), 2)
+        note = ("Grand total over the %d %s items invoiced in this period: %s net. "
+                "%d of the %d items invoiced were %s; the rest are excluded. %s"
+                % (len(chosen), kind_word, total, len(chosen), len(every), kind_word,
+                   page_share(shown, "valor", total)))
+        return ToolResult(
+            columns=[text("item_code", "Code"), text("item_name", "Item"),
+                     currency("valor", "Value purchased"), number("quantidade", "Quantity")],
+            rows=shown,
+            source=describe("Purchase Invoice Item (submitted invoices)", company, from_date, to_date,
+                            {"item group": item_group, "supplier": supplier,
+                             "kind": tipo_artigo, "ordered by": ordenar_por}),
+            filters_applied=filters,
+            note=note,
+        )
 
     order = {
         "valor": "valor desc",
@@ -164,6 +225,7 @@ def compras_por_artigo(from_date, to_date, limite=20, item_group=None, supplier=
         source=describe("Purchase Invoice Item (submitted invoices)", company,
                         from_date, to_date,
                         {"item group": item_group, "supplier": supplier,
+                         "kind": tipo_artigo,
                          "ordered by": ordenar_por}),
         filters_applied=filters,
         note=_note,

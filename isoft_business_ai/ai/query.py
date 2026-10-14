@@ -27,7 +27,7 @@ MAX_REFERENCE_ROWS = 10000
 
 
 def fetch_reference(doctype, fields, filters=None, group_by=None, order_by=None,
-                    or_filters=None):
+                    or_filters=None, extra_doctypes=None):
     """Read bounded reference data without the display row cap.
 
     Use only where the row count is set by configuration (accounts, warehouses)
@@ -35,6 +35,7 @@ def fetch_reference(doctype, fields, filters=None, group_by=None, order_by=None,
     """
     return fetch(doctype, fields, filters=filters, group_by=group_by,
                  order_by=order_by, or_filters=or_filters,
+                 extra_doctypes=extra_doctypes,
                  limit=MAX_REFERENCE_ROWS, _reference=True)
 
 

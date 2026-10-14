@@ -254,6 +254,13 @@ def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
         "to_date": Param.date("End date."),
         "limite": Param.integer("How many items to return. Default 20.", optional=True),
         "item_group": Param.text("Filter by item group.", optional=True),
+        "tipo_artigo": Param.enum(
+            "Which kind of item to count: 'todos' (the default), 'stock' for physical "
+            "stocked items only, or 'servico' for services and other non-stock items. "
+            "Use 'stock' for 'physical items', 'artigos fisicos', 'only what we hold in "
+            "stock' - services are often a large share of the value and change the "
+            "ranking completely.",
+            ["todos", "stock", "servico"], optional=True),
         "customer": Param.text(
             "Restrict to ONE customer (exact customer code). Call procurar_cliente first "
             "if you only know the name.", optional=True),
@@ -268,7 +275,7 @@ def vendas_por_cliente(from_date, to_date, limite=20, customer_group=None,
     doctypes=["Sales Invoice", "Sales Invoice Item"],
     group="vendas",
 )
-def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=None,
+def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=None, tipo_artigo=None,
                       ordenar_por="valor", company=None):
     company = resolve_company(company)
     filters = submitted({"company": company})
@@ -277,6 +284,58 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=N
         filters["`tabSales Invoice Item`.item_group"] = item_group
     if customer:
         filters["customer"] = customer
+    if tipo_artigo in ("stock", "servico"):
+        # is_stock_item lives on Item, which is not a child table of the
+        # invoice, so the query builder cannot join it - and a backtick
+        # qualified key with an "in" list comes back mis-prefixed. So the whole
+        # ranking is built here instead: read every item invoiced in the period
+        # uncapped, keep the kind that was asked for, and rank what is left.
+        # Only this branch does that; without tipo_artigo nothing changes.
+        every = fetch_reference(
+            "Sales Invoice",
+            fields=["`tabSales Invoice Item`.item_code as item_code",
+                    "`tabSales Invoice Item`.item_name as item_name",
+                    "sum(`tabSales Invoice Item`.base_net_amount) as valor",
+                    "sum(`tabSales Invoice Item`.stock_qty) as quantidade"],
+            filters=filters, group_by="`tabSales Invoice Item`.item_code",
+            extra_doctypes=["Sales Invoice Item"])
+        codes = [r["item_code"] for r in every if r.get("item_code")]
+        keep = set(r["name"] for r in frappe.get_all(
+            "Item", filters={"name": ["in", codes],
+                             "is_stock_item": 1 if tipo_artigo == "stock" else 0},
+            fields=["name"], limit_page_length=0)) if codes else set()
+        chosen = [r for r in every if r["item_code"] in keep]
+
+        kind_word = "stocked" if tipo_artigo == "stock" else "non-stock"
+        if not chosen:
+            return ToolResult(
+                columns=[text("item_code", "Code")], rows=[],
+                source=describe("Sales Invoice Item (submitted invoices)", company,
+                                from_date, to_date, {"kind": tipo_artigo}),
+                filters_applied=filters,
+                note=("No %s item appears in sales for this period, so there is "
+                      "nothing to rank. Say that; do not fall back to all items."
+                      % kind_word))
+
+        reverse = not (ordenar_por or "valor").endswith("_asc")
+        key = "quantidade" if (ordenar_por or "").startswith("quantidade") else "valor"
+        chosen.sort(key=lambda r: flt(r.get(key)), reverse=reverse)
+        shown = chosen[: limite or 20]
+        total = round(sum(flt(r.get("valor")) for r in chosen), 2)
+        note = ("Grand total over the %d %s items invoiced in this period: %s net. "
+                "%d of the %d items invoiced were %s; the rest are excluded. %s"
+                % (len(chosen), kind_word, total, len(chosen), len(every), kind_word,
+                   page_share(shown, "valor", total)))
+        return ToolResult(
+            columns=[text("item_code", "Code"), text("item_name", "Item"),
+                     currency("valor", "Value sold"), number("quantidade", "Quantity")],
+            rows=shown,
+            source=describe("Sales Invoice Item (submitted invoices)", company, from_date, to_date,
+                            {"item group": item_group, "customer": customer,
+                             "kind": tipo_artigo, "ordered by": ordenar_por}),
+            filters_applied=filters,
+            note=note,
+        )
 
     order = {
         "valor": "valor desc",
@@ -329,6 +388,7 @@ def vendas_por_artigo(from_date, to_date, limite=20, item_group=None, customer=N
         rows=rows,
         source=describe("Sales Invoice Item (submitted invoices)", company, from_date, to_date,
                         {"item group": item_group, "customer": customer,
+                         "kind": tipo_artigo,
                          "ordered by": ordenar_por}),
         filters_applied=filters,
         note=_note,
@@ -527,5 +587,71 @@ def clientes_inactivos(from_date, to_date, desde, ate, limite=50, company=None):
         filters_applied={"company": company, "from_date": from_date, "to_date": to_date,
                          "desde": desde, "ate": ate},
         header=header,
+        note=note,
+    )
+
+
+@ai_tool(
+    name="vendas_por_utilizador",
+    description=(
+        "Sales grouped by the person in the system who raised the invoice, not by the "
+        "customer who bought. Use for 'sales by user', 'who sold the most', 'sales per "
+        "salesperson', 'vendas por utilizador', 'quem vendeu mais', 'por vendedor'. "
+        "Every other sales tool groups by customer, item, period or document; this is "
+        "the only one that answers for the people doing the selling."
+    ),
+    params={
+        "from_date": Param.date("Start date."),
+        "to_date": Param.date("End date."),
+        "limite": Param.integer("Maximum people listed. Default 20.", optional=True),
+        "ordenar_por": Param.enum(
+            "Sort order. 'valor' is most sold first (the default); 'valor_asc' is least "
+            "first; 'facturas' is most invoices first.",
+            ["valor", "valor_asc", "facturas"], optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Sales Invoice"],
+    group="vendas",
+)
+def vendas_por_utilizador(from_date, to_date, limite=20, ordenar_por="valor", company=None):
+    company = resolve_company(company)
+    filters = submitted({"company": company})
+    filters.update(date_range("posting_date", from_date, to_date))
+
+    order = {"valor": "total desc", "valor_asc": "total asc",
+             "facturas": "facturas desc"}.get(ordenar_por or "valor", "total desc")
+    rows = fetch(
+        "Sales Invoice",
+        fields=["owner", "sum(base_grand_total) as total", "count(name) as facturas"],
+        filters=filters, group_by="owner", order_by=order, limit=limite or 20)
+
+    # The email identifies them but does not read as a name in a report, and a
+    # user's own name is not confidential to colleagues who share the company.
+    names = {}
+    if rows:
+        for u in frappe.get_all("User", filters={"name": ["in", [r["owner"] for r in rows]]},
+                                fields=["name", "full_name"], limit_page_length=0):
+            names[u["name"]] = u.get("full_name")
+    for r in rows:
+        r["nome"] = names.get(r["owner"]) or r["owner"]
+
+    _total, _n, _g = grand_total("Sales Invoice", filters, "base_grand_total",
+                                 group_field="owner")
+    note = total_note(_total, _n, _g, "sales invoices", "people",
+                      rows=rows, value_key="total")
+    note += (" This is who raised each invoice in the system, which is not always who "
+             "closed the sale - say so if it matters to the question.")
+
+    return ToolResult(
+        columns=[
+            text("nome", "Person"),
+            text("owner", "User"),
+            currency("total", "Total sold"),
+            integer("facturas", "Invoices"),
+        ],
+        rows=rows,
+        source=describe("Sales Invoice (submitted, grouped by the user who raised it)",
+                        company, from_date, to_date, {"ordered by": ordenar_por}),
+        filters_applied=filters,
         note=note,
     )

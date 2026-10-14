@@ -3,63 +3,6 @@
  "note": "Template gold set. The real one is site-specific - it names this installation's own customers, suppliers and accounts - so it is not committed. Copy this to gold_set.json, replace the placeholder dates and codes with your own, then run with --rebaseline to pin the signatures. Thereafter every run compares against that baseline and reports logic drift separately from ordinary data movement.",
  "cases": [
   {
-   "id": "EX-V01",
-   "question": "How much did we sell last month?",
-   "expected_tool": "vendas_total",
-   "expected_args": {
-    "from_date": "2026-09-01",
-    "to_date": "2026-09-30"
-   },
-   "note": ""
-  },
-  {
-   "id": "EX-V02",
-   "question": "Who are our best customers this year?",
-   "expected_tool": "vendas_por_cliente",
-   "expected_args": {
-    "from_date": "2026-01-01",
-    "to_date": "2026-12-31",
-    "ordenar_por": "valor"
-   },
-   "note": ""
-  },
-  {
-   "id": "EX-V03",
-   "question": "What are our worst selling products this year?",
-   "expected_tool": "vendas_por_artigo",
-   "expected_args": {
-    "from_date": "2026-01-01",
-    "to_date": "2026-12-31",
-    "ordenar_por": "valor_asc"
-   },
-   "note": "The tail of a best-sellers page is not the worst sellers."
-  },
-  {
-   "id": "EX-R01",
-   "question": "Who owes us money?",
-   "expected_tool": "contas_a_receber",
-   "expected_args": {},
-   "note": ""
-  },
-  {
-   "id": "EX-P01",
-   "question": "How much do we owe suppliers?",
-   "expected_tool": "contas_a_pagar",
-   "expected_args": {},
-   "note": ""
-  },
-  {
-   "id": "EX-T01",
-   "question": "How much did we collect from customers this month?",
-   "expected_tool": "recebimentos_pagamentos",
-   "expected_args": {
-    "from_date": "2026-10-01",
-    "to_date": "2026-10-31",
-    "direccao": "recebimentos"
-   },
-   "note": ""
-  },
-  {
    "id": "EX-A01",
    "question": "Show the balancete geral for this year",
    "expected_tool": "balancete_geral",
@@ -85,74 +28,6 @@
    "expected_tool": "cash_position",
    "expected_args": {},
    "note": ""
-  },
-  {
-   "id": "EX-S01",
-   "question": "What is our total stock value?",
-   "expected_tool": "stock_valor_total",
-   "expected_args": {},
-   "note": ""
-  },
-  {
-   "id": "EX-S02",
-   "question": "Which items have not moved in six months?",
-   "expected_tool": "stock_risco",
-   "expected_args": {
-    "dias": 180,
-    "risco": "sem_movimento"
-   },
-   "note": ""
-  },
-  {
-   "id": "EX-S03",
-   "question": "Why did stock go up this year?",
-   "expected_tool": "stock_movimentos",
-   "expected_args": {
-    "from_date": "2026-01-01",
-    "to_date": "2026-12-31"
-   },
-   "note": "Purchases are usually not the answer."
-  },
-  {
-   "id": "EX-L01",
-   "question": "Find the customer called Acme",
-   "expected_tool": "procurar_cliente",
-   "expected_args": {
-    "termo": "Acme"
-   },
-   "note": ""
-  },
-  {
-   "id": "EX-L02",
-   "question": "Find the Stock Adjustment account",
-   "expected_tool": "procurar_conta",
-   "expected_args": {
-    "termo": "Stock Adjustment"
-   },
-   "note": "Account names carry their number and company suffix."
-  },
-  {
-   "id": "EX-V04",
-   "question": "What did customer CUST-0001 buy from us this year, item by item?",
-   "expected_tool": "vendas_por_artigo",
-   "expected_args": {
-    "from_date": "2026-01-01",
-    "to_date": "2026-12-31",
-    "customer": "CUST-0001"
-   },
-   "note": "Item-level sales for ONE customer; no other tool breaks a customer down to items."
-  },
-  {
-   "id": "EX-V05",
-   "question": "Which customers bought last year and nothing at all this year?",
-   "expected_tool": "clientes_inactivos",
-   "expected_args": {
-    "from_date": "2025-01-01",
-    "to_date": "2025-12-31",
-    "desde": "2026-01-01",
-    "ate": "2026-12-31"
-   },
-   "note": "A set difference over two complete lists. Two capped ranked pages cannot answer it."
   },
   {
    "id": "EX-C02",
@@ -189,6 +64,159 @@
     "apenas_negativo": true
    },
    "note": "A value-ranked page can never surface a negative line."
+  },
+  {
+   "id": "EX-L01",
+   "question": "Find the customer called Acme",
+   "expected_tool": "procurar_cliente",
+   "expected_args": {
+    "termo": "Acme"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-L02",
+   "question": "Find the Stock Adjustment account",
+   "expected_tool": "procurar_conta",
+   "expected_args": {
+    "termo": "Stock Adjustment"
+   },
+   "note": "Account names carry their number and company suffix."
+  },
+  {
+   "id": "EX-P01",
+   "question": "How much do we owe suppliers?",
+   "expected_tool": "contas_a_pagar",
+   "expected_args": {},
+   "note": ""
+  },
+  {
+   "id": "EX-R01",
+   "question": "Who owes us money?",
+   "expected_tool": "contas_a_receber",
+   "expected_args": {},
+   "note": ""
+  },
+  {
+   "id": "EX-S01",
+   "question": "What is our total stock value?",
+   "expected_tool": "stock_valor_total",
+   "expected_args": {},
+   "note": ""
+  },
+  {
+   "id": "EX-S02",
+   "question": "Which items have not moved in six months?",
+   "expected_tool": "stock_risco",
+   "expected_args": {
+    "dias": 180,
+    "risco": "sem_movimento"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-S03",
+   "question": "Why did stock go up this year?",
+   "expected_tool": "stock_movimentos",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31"
+   },
+   "note": "Purchases are usually not the answer."
+  },
+  {
+   "id": "EX-S07",
+   "question": "Qual o valor total do stock e em quantos armazens esta?",
+   "expected_tool": "stock_valor_total",
+   "expected_args": {},
+   "note": "The warehouse count must be the number holding stock, not the number configured."
+  },
+  {
+   "id": "EX-T01",
+   "question": "How much did we collect from customers this month?",
+   "expected_tool": "recebimentos_pagamentos",
+   "expected_args": {
+    "from_date": "2026-10-01",
+    "to_date": "2026-10-31",
+    "direccao": "recebimentos"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-V01",
+   "question": "How much did we sell last month?",
+   "expected_tool": "vendas_total",
+   "expected_args": {
+    "from_date": "2026-09-01",
+    "to_date": "2026-09-30"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-V02",
+   "question": "Who are our best customers this year?",
+   "expected_tool": "vendas_por_cliente",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "ordenar_por": "valor"
+   },
+   "note": ""
+  },
+  {
+   "id": "EX-V03",
+   "question": "What are our worst selling products this year?",
+   "expected_tool": "vendas_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "ordenar_por": "valor_asc"
+   },
+   "note": "The tail of a best-sellers page is not the worst sellers."
+  },
+  {
+   "id": "EX-V04",
+   "question": "What did customer CUST-0001 buy from us this year, item by item?",
+   "expected_tool": "vendas_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-12-31",
+    "customer": "CUST-0001"
+   },
+   "note": "Item-level sales for ONE customer; no other tool breaks a customer down to items."
+  },
+  {
+   "id": "EX-V05",
+   "question": "Which customers bought last year and nothing at all this year?",
+   "expected_tool": "clientes_inactivos",
+   "expected_args": {
+    "from_date": "2025-01-01",
+    "to_date": "2025-12-31",
+    "desde": "2026-01-01",
+    "ate": "2026-12-31"
+   },
+   "note": "A set difference over two complete lists. Two capped ranked pages cannot answer it."
+  },
+  {
+   "id": "EX-V31",
+   "question": "Top 10 artigos fisicos vendidos este ano, sem servicos",
+   "expected_tool": "vendas_por_artigo",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-10-14",
+    "tipo_artigo": "stock"
+   },
+   "note": "Reported in production: services are about half the invoiced value, so a ranking that includes them answers a different question."
+  },
+  {
+   "id": "EX-V32",
+   "question": "Quem vendeu mais este ano? Por utilizador, nao por cliente",
+   "expected_tool": "vendas_por_utilizador",
+   "expected_args": {
+    "from_date": "2026-01-01",
+    "to_date": "2026-10-14"
+   },
+   "note": "Reported in production: every other sales tool groups by customer."
   }
  ]
 }
