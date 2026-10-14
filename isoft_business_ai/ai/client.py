@@ -25,6 +25,7 @@ def get_settings():
         "effort": DEFAULT_EFFORT,
         "max_iterations": 6,
         "enabled": 0,
+        "enable_web_research": 0,
     }
     try:
         doc = frappe.get_cached_doc("Isoft Business AI Settings")
@@ -39,6 +40,7 @@ def get_settings():
         "effort": (doc.get("effort") or DEFAULT_EFFORT).strip().lower(),
         "max_iterations": int(doc.get("max_iterations") or 6),
         "enabled": int(doc.get("enabled") or 0),
+        "enable_web_research": int(doc.get("enable_web_research") or 0),
     }
 
 

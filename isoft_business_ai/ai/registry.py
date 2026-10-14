@@ -188,6 +188,7 @@ def load_tools():
         payables,
         payments,
         quotations,
+        research,
         targets,
         purchases,
         receivables,

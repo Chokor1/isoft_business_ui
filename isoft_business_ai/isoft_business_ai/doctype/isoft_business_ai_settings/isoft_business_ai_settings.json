@@ -13,14 +13,16 @@
   "cb_model",
   "max_tokens",
   "max_iterations",
+  "sb_web",
+  "enable_web_research",
+  "sb_test",
+  "connection_status",
   "sb_limits",
   "daily_question_limit",
   "daily_token_limit",
   "cb_limits",
   "monthly_budget_usd",
-  "limits_help",
-  "sb_test",
-  "connection_status"
+  "limits_help"
  ],
  "fields": [
   {
@@ -79,6 +81,18 @@
    "label": "Max steps per question"
   },
   {
+   "fieldname": "sb_web",
+   "fieldtype": "Section Break",
+   "label": "Web research"
+  },
+  {
+   "fieldname": "enable_web_research",
+   "fieldtype": "Check",
+   "label": "Allow the assistant to search the public web",
+   "default": "0",
+   "description": "Off by default. When on, the assistant may look things up outside the ERP - what a part number is, what a company does, who could supply something - and must show a source link for everything it reports. Web findings are never mixed into ERP figures. Each search costs tokens on the same account."
+  },
+  {
    "fieldname": "sb_test",
    "fieldtype": "Section Break",
    "label": "Diagnostics"
@@ -128,7 +142,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-12 14:00:00.000000",
+ "modified": "2026-10-14 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Isoft Business AI",
  "name": "Isoft Business AI Settings",
