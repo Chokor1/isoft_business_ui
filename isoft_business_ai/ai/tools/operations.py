@@ -244,3 +244,95 @@ def compras_pipeline(dias_minimos=0, supplier=None, company=None, limite=25):
         header=header,
         note=note,
     )
+
+
+@ai_tool(
+    name="por_facturar",
+    description=(
+        "Goods that have moved but have not been invoiced: delivery notes not yet "
+        "billed to the customer, or purchase receipts not yet billed by the supplier. "
+        "Use for 'what have we delivered but not invoiced', 'unbilled deliveries', "
+        "'what has arrived that we have not been invoiced for', 'por facturar', "
+        "'entregas nao facturadas', 'guias por facturar'. This is revenue not yet "
+        "billed, or a cost not yet booked - no other tool sees it, because the "
+        "invoice that would carry it does not exist yet."
+    ),
+    params={
+        "direccao": Param.enum(
+            "'vendas' for deliveries to customers not yet invoiced (the default), "
+            "'compras' for receipts from suppliers not yet billed.",
+            ["vendas", "compras"], optional=True),
+        "from_date": Param.date("Start date. Optional - omit for everything open.",
+                                optional=True),
+        "to_date": Param.date("End date.", optional=True),
+        "limite": Param.integer("Maximum documents listed. Default 25.", optional=True),
+        "company": Param.text("Company.", optional=True),
+    },
+    doctypes=["Delivery Note", "Purchase Receipt"],
+    group="operacoes",
+)
+def por_facturar(direccao="vendas", from_date=None, to_date=None, limite=25, company=None):
+    company = resolve_company(company)
+    selling = (direccao or "vendas") == "vendas"
+    doctype = "Delivery Note" if selling else "Purchase Receipt"
+    party_field = "customer" if selling else "supplier"
+    party_name = "customer_name" if selling else "supplier_name"
+
+    filters = submitted({"company": company, "per_billed": ["<", 99.99]})
+    if from_date and to_date:
+        filters.update(date_range("posting_date", from_date, to_date))
+
+    found = fetch(doctype,
+                  fields=["name", party_field, party_name, "posting_date", "status",
+                          "base_grand_total as value", "per_billed"],
+                  filters=filters, order_by="posting_date asc", limit=500)
+
+    today = nowdate()
+    rows, total, pending = [], 0.0, 0.0
+    for r in found:
+        value = flt(r["value"])
+        unbilled = value * (100.0 - flt(r.get("per_billed"))) / 100.0
+        total += value
+        pending += unbilled
+        rows.append({
+            "name": r["name"],
+            "party": (r.get(party_name) or r.get(party_field) or "").strip(),
+            "date": r.get("posting_date"),
+            "dias": date_diff(today, r.get("posting_date")) if r.get("posting_date") else None,
+            "status": r.get("status"),
+            "value": value,
+            "facturado_pct": flt(r.get("per_billed")),
+            "por_facturar": unbilled,
+        })
+    rows.sort(key=lambda r: -r["por_facturar"])
+
+    noun = "deliveries to customers" if selling else "receipts from suppliers"
+    header = {
+        "Open documents": len(rows),
+        "Total document value": round(total, 2),
+        "Still to be invoiced": round(pending, 2),
+        "As at": today,
+    }
+    note = ("%d submitted %s are not fully invoiced, %s of their value still to be "
+            "billed. The header totals cover every one of them, not just the %d "
+            "listed, so quote them rather than adding the rows up. 'Still to be "
+            "invoiced' is each document's value weighted by the share not yet billed."
+            % (len(rows), noun, round(pending, 2), min(len(rows), max(1, int(limite or 25)))))
+    if not rows:
+        note = ("Every submitted %s is fully invoiced. This is a complete check, not a "
+                "capped page." % noun[:-1])
+
+    return ToolResult(
+        columns=[text("name", "Document"),
+                 text("party", "Customer" if selling else "Supplier"),
+                 text("date", "Dated"), integer("dias", "Days old"),
+                 text("status", "Status"), currency("value", "Document value"),
+                 number("facturado_pct", "% invoiced"),
+                 currency("por_facturar", "Still to invoice")],
+        rows=rows[: max(1, int(limite or 25))],
+        source=describe("%s (submitted, not fully invoiced)" % doctype, company,
+                        from_date, to_date),
+        filters_applied=filters,
+        header=header,
+        note=note,
+    )

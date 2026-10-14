@@ -10,7 +10,7 @@ conversation feel like it understands the business.
 import frappe
 from frappe.utils import nowdate
 
-from isoft_business_ai.ai.formatting import text
+from isoft_business_ai.ai.formatting import currency, text
 from isoft_business_ai.ai.query import fetch
 from isoft_business_ai.ai.registry import Param, ToolResult, ai_tool
 from isoft_business_ai.ai.security import allowed_companies, resolve_company
@@ -297,4 +297,62 @@ def procurar_conta(termo, apenas_movimento=True, company=None):
         filters_applied={"company": company, "termo": termo},
         note=note,
         aux=True,
+    )
+
+
+@ai_tool(
+    name="precos_do_artigo",
+    description=(
+        "The prices held for an item: every price list it appears on, the rate, the "
+        "currency and the dates the price is valid for. Use for 'what do we sell this "
+        "for', 'what is the price of', 'what do we pay for this item', 'qual e o preco "
+        "deste artigo', 'preco de venda', 'lista de precos'. Prices live in their own "
+        "records and are not the same thing as what an item was last invoiced at - say "
+        "which of the two you are reporting."
+    ),
+    params={
+        "item_code": Param.text(
+            "Exact item code. Call procurar_artigo first if you only know the name."),
+        "tipo": Param.enum(
+            "'venda' for selling prices, 'compra' for buying prices, 'todos' for both "
+            "(the default).", ["venda", "compra", "todos"], optional=True),
+        "limite": Param.integer("Maximum prices listed. Default 20.", optional=True),
+    },
+    doctypes=["Item Price", "Price List"],
+    group="pesquisa",
+)
+def precos_do_artigo(item_code, tipo="todos", limite=20):
+    filters = {"item_code": item_code}
+    if tipo == "venda":
+        filters["selling"] = 1
+    elif tipo == "compra":
+        filters["buying"] = 1
+
+    rows = fetch(
+        "Item Price",
+        fields=["price_list", "price_list_rate", "currency", "uom", "valid_from",
+                "valid_upto", "customer", "supplier", "selling", "buying"],
+        filters=filters, order_by="selling desc, price_list_rate desc",
+        limit=limite or 20)
+    for r in rows:
+        r["kind"] = "Selling" if r.get("selling") else ("Buying" if r.get("buying") else "")
+        r["para"] = r.get("customer") or r.get("supplier") or ""
+
+    note = ("%d price record(s) for %s. A price list rate is what the system will "
+            "propose; it is not what the item actually sold for - for that, ask for "
+            "sales by item." % (len(rows), item_code))
+    if not rows:
+        note = ("No price is held for %s%s. Say that plainly: the item may simply be "
+                "priced on the document each time. It does not mean the item does not "
+                "exist." % (item_code, "" if tipo == "todos" else " of that kind"))
+
+    return ToolResult(
+        columns=[text("price_list", "Price list"), text("kind", "Kind"),
+                 currency("price_list_rate", "Rate"), text("currency", "Currency"),
+                 text("uom", "Unit"), text("para", "Only for"),
+                 text("valid_from", "From"), text("valid_upto", "Until")],
+        rows=rows,
+        source="Item Price | item: %s" % item_code,
+        filters_applied=filters,
+        note=note,
     )

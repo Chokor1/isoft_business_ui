@@ -84,11 +84,41 @@
    "note": "Account names carry their number and company suffix."
   },
   {
+   "id": "EX-O01",
+   "question": "O que entregamos e ainda nao facturamos?",
+   "expected_tool": "por_facturar",
+   "expected_args": {
+    "direccao": "vendas",
+    "limite": 25
+   },
+   "note": "Revenue that has moved but not been billed. No invoice exists yet, so no sales tool can see it."
+  },
+  {
+   "id": "EX-O02",
+   "question": "Que recepcoes de fornecedor ainda nao foram facturadas?",
+   "expected_tool": "por_facturar",
+   "expected_args": {
+    "direccao": "compras",
+    "limite": 25
+   },
+   "note": ""
+  },
+  {
    "id": "EX-P01",
    "question": "How much do we owe suppliers?",
    "expected_tool": "contas_a_pagar",
    "expected_args": {},
    "note": ""
+  },
+  {
+   "id": "EX-PR01",
+   "question": "Qual e o preco de venda do artigo FRG-LG-260L?",
+   "expected_tool": "precos_do_artigo",
+   "expected_args": {
+    "item_code": "ITEM-0001",
+    "limite": 20
+   },
+   "note": "A price list rate is not what the item last sold for; the note says so."
   },
   {
    "id": "EX-R01",
