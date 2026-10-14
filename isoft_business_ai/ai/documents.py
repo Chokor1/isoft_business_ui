@@ -311,28 +311,30 @@ def _rank(terms, needle):
 
 
 def _rank_entry(entry, needle):
-    """A doctype's match tier, its own language preferred over the other one.
+    """How well a doctype matches, and whether only its other name did.
 
-    A Portuguese spelling still matches inside an English desk, but one tier
-    lower, so an English user typing "cu" is offered Customer and Customs
-    Tariff Number before Cost Center - which only matches because "custo"
-    begins that way.
+    Returns (tier, from_other_language) or None. A Portuguese spelling matches
+    inside an English desk just as well; which language it came from only
+    breaks ties.
     """
     rank = _rank(entry.get("terms") or [], needle)
     if rank is not None:
-        return rank
+        return rank, 0
     rank = _rank(entry.get("alt") or [], needle)
-    return None if rank is None else rank + 1
+    return None if rank is None else (rank, 1)
 
 
 def _score(rank, common):
-    """Two orders of preference flattened into one sort key.
+    """Three orders of preference, most important first.
 
-    A better match always wins, and between equal matches the twenty doctypes
-    people actually mention come first - so "account" leads with Account, not
-    with Accounting Dimension Filter.
+    Match quality decides first, so an exact name is never beaten by a word
+    found inside a longer one. Then the twenty doctypes people actually mention
+    come first, which is what makes "cli" offer Customer rather than Clinical
+    Procedure and "account" offer Account rather than Accounting Dimension
+    Filter. Only then does the language the match came from break the tie.
     """
-    return rank * 2 + (0 if common else 1)
+    tier, other_language = rank
+    return (tier, 0 if common else 1, other_language)
 
 
 def search_doctypes(term, limit=8):
@@ -342,7 +344,7 @@ def search_doctypes(term, limit=8):
     for d in _catalogue():
         if not frappe.has_permission(d["doctype"], "read"):
             continue
-        rank = _rank_entry(d, needle) if needle else 0
+        rank = _rank_entry(d, needle) if needle else (0, 0)
         if rank is None:
             continue
         hits.append((_score(rank, d["common"]), d["label"], d["doctype"]))

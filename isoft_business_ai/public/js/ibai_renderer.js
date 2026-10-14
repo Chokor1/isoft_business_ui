@@ -580,26 +580,30 @@ IBAI._rankTerms = function (terms, needle) {
 /**
  * Document types matching a part-written word, best first.
  *
- * The user's own language outranks the other one: a Portuguese spelling still
- * finds the type inside an English desk, but one tier down, so "cu" offers
- * Customer before Cost Center - which only matches because "custo" starts
- * that way.
+ * Three orders of preference, mirroring _score() in ai/documents.py. Match
+ * quality decides first, so an exact name is never beaten by a word found
+ * inside a longer one. Then the types people actually mention, which is what
+ * makes "cli" offer Customer rather than Clinical Procedure. Only then does
+ * the language the match came from break the tie - a Portuguese spelling
+ * finds the type inside an English desk just as well.
  */
 IBAI.matchDoctypes = function (word, limit) {
 	const needle = IBAI.normalise(word || '').trim();
 	if (!needle) return [];
 	const hits = [];
 	(IBAI._doctypes || []).forEach(d => {
+		let other = 0;
 		let rank = IBAI._rankTerms(d.terms, needle);
 		if (rank === -1) {
 			rank = IBAI._rankTerms(d.alt, needle);
 			if (rank === -1) return;
-			rank += 1;
+			other = 1;
 		}
 		hits.push({ doctype: d.doctype, label: d.label, rank: rank,
-			score: rank * 2 + (d.common ? 0 : 1) });
+			common: d.common ? 0 : 1, other: other });
 	});
-	hits.sort((a, b) => a.score - b.score || a.label.localeCompare(b.label));
+	hits.sort((a, b) => a.rank - b.rank || a.common - b.common ||
+		a.other - b.other || a.label.localeCompare(b.label));
 	return hits.slice(0, limit || 5);
 };
 
@@ -741,10 +745,15 @@ IBAI.attachMentions = function ($input, $anchor) {
 		$menu.prop('hidden', false);
 	}
 
-	/** Strong enough to mean a type, rather than the left half of an email. */
+	/** Strong enough to mean a type, rather than the left half of an email.
+	 *
+	 * A word found inside a longer name counts in the user's own language but
+	 * not in the other one, which is what keeps "ali@isoft.co.ao" an address.
+	 */
 	function asDoctype(word) {
 		const found = IBAI.matchDoctypes(word, 1);
-		return found.length && found[0].rank <= 2 ? found[0].doctype : null;
+		if (!found.length) return null;
+		return found[0].rank + found[0].other <= 2 ? found[0].doctype : null;
 	}
 
 	function read() {
