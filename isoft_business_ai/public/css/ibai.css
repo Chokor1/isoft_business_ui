@@ -757,7 +757,14 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 .ibai-mention {
   background: var(--ibai-accent-soft); color: var(--ibai-accent);
   border-radius: var(--ibai-r-xs); padding: 1px 6px;
-  font-size: .93em; font-weight: 600; white-space: nowrap;
+  font-size: .93em; font-weight: 600;
+  /* Not nowrap: a chip holding "Supplier SOFTCLICNET - COMERCIO E PRESTACAO
+     DE SERVICOS, LDA" is wider than the quick panel, and an unbreakable chip
+     took the whole line with it and hung outside the chat. It wraps instead,
+     and box-decoration-break makes the two fragments look like two chips
+     rather than one torn box. */
+  white-space: normal; overflow-wrap: break-word;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
 .ibai-mentions {
   position: absolute; left: var(--ibai-4); right: var(--ibai-4);
