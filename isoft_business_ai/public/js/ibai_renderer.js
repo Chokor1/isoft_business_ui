@@ -1143,3 +1143,180 @@ IBAI.rowMenu = function ($button, entries) {
 	});
 	return $menu;
 };
+
+/* -------------------------------------------------------------------- help */
+
+/**
+ * What the assistant is for, in the words a manager would use. Kept here
+ * rather than in either surface's own script because a desk Page script is
+ * cached in localStorage with no version check: this file is rebuilt and
+ * cache-busted on every deploy, that one can sit stale in a browser for weeks.
+ */
+IBAI.helpSections = function () {
+	return [
+		{
+			title: __('What it is'),
+			body: __('Ask about your ERP in your own words, in English or Portuguese. ' +
+				'It reads your data and answers with the figures behind the answer. ' +
+				'It never changes anything, and it only ever sees what your own ' +
+				'permissions let you see.'),
+		},
+		{
+			title: __('What you can ask'),
+			list: [
+				__('Sales — totals, by customer, by item, by month, best and worst sellers'),
+				__('Money — who owes you, what you owe, aged balances, cash position'),
+				__('Buying — purchases by supplier or item, open orders, committed spend'),
+				__('Stock — what is on hand, by warehouse, slow movers, negative stock'),
+				__('Accounting — trial balance, ledgers, account statements'),
+				__('A document — open an invoice, order or item and read it'),
+			],
+		},
+		{
+			title: __('Point at a record'),
+			body: __('Start typing a type and pick it from the list — write "su" and ' +
+				'choose Supplier@, then type the name. Portuguese works too: ' +
+				'cliente@, fornecedor@, artigo@. The record is then part of the ' +
+				'question, so you do not have to spell its code.'),
+		},
+		{
+			title: __('Keep going'),
+			body: __('Follow-ups are short. "And last year?" changes the period. ' +
+				'Naming another customer asks the same question about them. ' +
+				'You do not need to repeat yourself.'),
+		},
+		{
+			title: __('Where the numbers come from'),
+			body: __('Every answer shows the query behind it, and totals are worked ' +
+				'out in the database, never added up by the assistant. If it cannot ' +
+				'find something it says so rather than guessing.'),
+		},
+		{
+			title: __('Looking outside your ERP'),
+			body: __('When web research is switched on, it can also look things up ' +
+				'on the public web — what an unfamiliar part number is, what a ' +
+				'company does, who could supply something, recent news — and will ' +
+				'show a picture where it finds one. Anything from outside always ' +
+				'carries its source, and is never mixed into your own figures.'),
+		},
+		{
+			title: __('If an answer looks wrong'),
+			body: __('Use Report under the answer. It records the question and the ' +
+				'queries that ran, so it can be checked.'),
+		},
+	];
+};
+
+IBAI.helpPanel = function (onClose) {
+	const $panel = $('<aside class="ibai-help" role="dialog" aria-label="' +
+		IBAI.esc(__('About the Business Assistant')) + '"></aside>');
+	const $top = $('<div class="ibai-help-top"></div>').appendTo($panel);
+	$('<span class="ibai-help-mark"></span>').html(IBAI.galaxy(18)).appendTo($top);
+	$('<span class="ibai-help-title"></span>').text(__('How to use this')).appendTo($top);
+	$('<button class="ibai-ico ibai-help-close"></button>')
+		.attr('aria-label', __('Close'))
+		.html(IBAI.icon('<path d="M18 6 6 18M6 6l12 12"/>'))
+		.on('click', onClose)
+		.appendTo($top);
+
+	const $body = $('<div class="ibai-help-body"></div>').appendTo($panel);
+	IBAI.helpSections().forEach(s => {
+		const $s = $('<section class="ibai-help-sec"></section>');
+		$('<h4></h4>').text(s.title).appendTo($s);
+		if (s.body) $('<p></p>').text(s.body).appendTo($s);
+		if (s.list) {
+			const $ul = $('<ul></ul>');
+			s.list.forEach(li => $('<li></li>').text(li).appendTo($ul));
+			$ul.appendTo($s);
+		}
+		$s.appendTo($body);
+	});
+	return $panel;
+};
+
+/**
+ * Put a "?" next to the other header buttons on whichever surface is on
+ * screen, and open the panel beside the conversation rather than over it.
+ */
+IBAI.mountHelp = function (root) {
+	const $root = $(root);
+	// The two surfaces build different headers: the quick panel has a row of
+	// icon buttons, the workspace a bar above the conversation.
+	const $actions = $root.find('.ibai-head-actions, .ibai-main-top').first();
+	if (!$actions.length || $actions.find('.ibai-act-help').length) return;
+	const first = $actions.hasClass('ibai-head-actions');
+
+	const inConsole = $root.hasClass('ibai-console');
+	let $panel = null;
+	let watcher = null;
+
+	// Appended to the body, not inside the surface: the quick panel clips its
+	// children, so a panel hung off its left edge was built, measured as
+	// visible, and painted nowhere. Positioned against the surface's own box
+	// instead, which also survives the panel being dragged wider.
+	const place = () => {
+		if (!$panel) return;
+		const r = $root[0].getBoundingClientRect();
+		const gap = 12;
+		const width = Math.min(inConsole ? 360 : 320,
+			Math.max(260, (inConsole ? r.width : r.left) - gap * 2));
+		if (window.innerWidth <= 900) {
+			$panel.css({top: r.top, left: r.left, width: r.width, height: r.height});
+			return;
+		}
+		$panel.css(inConsole
+			? {top: r.top + gap, left: r.right - width - gap, width: width,
+			   height: Math.max(220, r.height - gap * 2)}
+			: {top: r.top, left: Math.max(gap, r.left - width - gap), width: width,
+			   height: r.height});
+	};
+
+	const close = () => {
+		if (watcher) { try { watcher.disconnect(); } catch (e) { /* ignore */ } watcher = null; }
+		$(window).off('resize.ibaihelp scroll.ibaihelp');
+		if ($panel) { $panel.remove(); $panel = null; }
+		$btn.attr('aria-expanded', 'false');
+	};
+	const open = () => {
+		$panel = IBAI.helpPanel(close)
+			.addClass(inConsole ? 'in-console' : 'in-panel')
+			.appendTo(document.body);
+		place();
+		$(window).on('resize.ibaihelp scroll.ibaihelp', place);
+		try {
+			watcher = new ResizeObserver(place);
+			watcher.observe($root[0]);
+		} catch (e) { /* no observer: resize still repositions it */ }
+		$btn.attr('aria-expanded', 'true');
+	};
+	const $btn = $('<button class="ibai-ico ibai-act-help"></button>')
+		.attr('aria-label', __('How to use this'))
+		.attr('title', __('How to use this'))
+		.attr('aria-expanded', 'false')
+		.html(IBAI.icon('<circle cx="12" cy="12" r="9"/>' +
+			'<path d="M9.2 9a2.8 2.8 0 0 1 5.5.7c0 1.9-2.7 2.3-2.7 4"/>' +
+			'<path d="M12 17.5h.01"/>'))
+		.on('click', () => { if ($panel) { close(); } else { open(); } });
+	// First among the panel's icons, because it is the one a newcomer needs and
+	// the rest manage a conversation they have not started yet. Last in the
+	// workspace bar, which reads left to right into the conversation.
+	if (first) { $actions.prepend($btn); } else { $actions.append($btn); }
+};
+
+/**
+ * Both surfaces build their own header, and one of them ships in a cached
+ * Page script, so the button installs itself whenever a surface turns up.
+ */
+IBAI.watchHelp = function () {
+	const scan = () => {
+		$('.ibai-panel, .ibai-console').each(function () { IBAI.mountHelp(this); });
+	};
+	scan();
+	try {
+		new MutationObserver(scan).observe(document.body, {childList: true, subtree: true});
+	} catch (e) {
+		setInterval(scan, 1500);
+	}
+};
+
+$(() => IBAI.watchHelp());

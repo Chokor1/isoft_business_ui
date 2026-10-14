@@ -322,6 +322,49 @@ body.ibai-resizing { cursor: col-resize; user-select: none; }
 }
 .ibai-stream { position: relative; z-index: 1; }
 
+/* The help panel sits BESIDE the conversation, not over it: it is read while
+   writing a first question, so hiding the thing it describes would be odd.
+   In the quick panel it hangs off the left edge, which follows the panel when
+   it is resized because the panel is its positioning context. */
+.ibai-help {
+  position: fixed; z-index: 1030;
+  display: flex; flex-direction: column;
+  background: var(--ibai-surface); color: var(--ibai-text);
+  border: 1px solid var(--ibai-line); border-radius: var(--ibai-r);
+  box-shadow: var(--ibai-shadow);
+}
+/* In the workspace bar the "?" is pushed to the far end. */
+.ibai-main-top .ibai-act-help { margin-left: auto; }
+
+/* Placement is measured in JS against the surface it belongs to, because the
+   quick panel can be dragged to any width. */
+.ibai-help-top {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--ibai-2);
+  padding: var(--ibai-2) var(--ibai-2) var(--ibai-2) var(--ibai-3);
+  border-bottom: 1px solid var(--ibai-line);
+}
+.ibai-help-mark { display: flex; flex: 0 0 auto; }
+.ibai-help-title {
+  flex: 1 1 auto; font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ibai-text-3);
+}
+.ibai-help-body { flex: 1 1 auto; overflow-y: auto; padding: var(--ibai-3); }
+.ibai-help-sec + .ibai-help-sec { margin-top: var(--ibai-4); }
+.ibai-help-sec h4 {
+  margin: 0 0 4px; font-size: 12.5px; font-weight: 600; color: var(--ibai-text);
+}
+.ibai-help-sec p {
+  margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ibai-text-2);
+}
+.ibai-help-sec ul { margin: 0; padding-left: 16px; }
+.ibai-help-sec li {
+  font-size: 12.5px; line-height: 1.5; color: var(--ibai-text-2); margin-bottom: 3px;
+}
+/* No room to sit beside anything on a phone, so it takes the surface over. */
+@media (max-width: 900px) {
+  .ibai-help { border-radius: 0; }
+}
+
 /* In the quick panel history is a drawer over the conversation. */
 .ibai-drawer {
   position: absolute; inset: 0; z-index: 4;

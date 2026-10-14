@@ -166,8 +166,11 @@ isoft_business_ai.Widget = class Widget {
 		document.addEventListener('mousedown', e => {
 			if (!this.open) return;
 			const el = e.target;
+			// .ibai-help is a sibling of the panel, not a child of it, because
+			// the panel clips its own children - so it has to be named here or
+			// reading the help closes the thing it is describing.
 			if (el && el.closest && el.closest(
-				'.ibai-panel, .ibai-launcher, .modal, .modal-backdrop, .ibai-menu')) {
+				'.ibai-panel, .ibai-launcher, .ibai-help, .modal, .modal-backdrop, .ibai-menu')) {
 				return;
 			}
 			this.toggle(false);
