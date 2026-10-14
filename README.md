@@ -24,15 +24,25 @@ The repository is named `isoft_business_ui`; the Frappe app inside it is
 ```bash
 cd ~/frappe-bench
 git clone https://github.com/Chokor1/isoft_business_ui.git apps/isoft_business_ai
+
+# A plain clone does NOT install the Python dependencies. This step is not
+# optional: without it the app installs and migrates perfectly well and then
+# fails the first time somebody asks a question.
+./env/bin/pip install -r apps/isoft_business_ai/requirements.txt
+
 bench --site <your-site> install-app isoft_business_ai
+bench --site <your-site> migrate
+bench restart
 ```
 
-Both provider SDKs are declared in `requirements.txt`, so `bench get-app`
-installs them. If the bench already had the app and you are only pulling, run
-`./env/bin/pip install -r apps/isoft_business_ai/requirements.txt` as well —
-otherwise the first question raises a missing-SDK error. Nothing about
-installing or migrating the app needs either SDK; only answering a question
-does, and the app says so plainly if one is absent.
+`bench get-app` runs that pip step for you; `git clone` does not. The same
+applies after pulling an update that changes `requirements.txt`.
+
+Installing and migrating the app need neither provider SDK — both imports are
+lazy, and that is covered by a test that blocks the module and runs the whole
+install, migrate and boot path. Only answering a question needs one, and if it
+is missing the app says which SDK and gives the pip command rather than raising
+`ModuleNotFoundError`.
 
 Put the provider key in `sites/<your-site>/site_config.json` — never in a form
 field, and never in this repository:
