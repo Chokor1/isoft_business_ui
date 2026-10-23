@@ -63,11 +63,10 @@ IBAI.galaxy = function (size) {
 IBAI.flags = function () {
 	return (frappe.boot && frappe.boot.isoft_business_ai) || {};
 };
-IBAI.can_use = function () {
-	const roles = frappe.user_roles ||
-		(frappe.boot && frappe.boot.user && frappe.boot.user.roles) || [];
-	return roles.indexOf('Business AI User') !== -1 || roles.indexOf('System Manager') !== -1;
-};
+// The server's rule, not a second guess at it: boot.py already decided, and
+// reading roles here let a System Manager without the role mount the launcher
+// and meet the "you need the role" error on their first click.
+IBAI.can_use = function () { return !!IBAI.flags().can_use; };
 IBAI.is_enabled = function () { return !!IBAI.flags().enabled; };
 IBAI.is_configured = function () { return !!IBAI.flags().configured; };
 
